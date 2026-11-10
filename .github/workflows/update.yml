@@ -2,7 +2,7 @@ name: Update Schedule
 
 on:
   schedule:
-    - cron: '*/30 4-19 * * 0-6'
+    - cron: '*/30 4-19 * * 1-6'
   workflow_dispatch:
 
 permissions:
@@ -23,13 +23,16 @@ jobs:
       - name: Install dependencies
         run: pip install requests beautifulsoup4
 
-      - name: Run parser
+      - name: Run 10A parser
         run: python parser.py
+
+      - name: Run 7B parser
+        run: python parser_7b.py
 
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add today_10a.txt
-          git commit -m "Auto update schedule" || echo "Нет новых изменений"
+          git add today_10a.txt today_7b.txt
+          git commit -m "Auto update schedules 10A & 7B" || echo "Нет новых изменений"
           git push || echo "Нечего отправлять"
