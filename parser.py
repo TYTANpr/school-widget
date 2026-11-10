@@ -4,89 +4,166 @@ import re
 from datetime import datetime, timedelta
 
 URL = "https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya"
-HEADERS = {"User-Agent": "Mozilla/5.0"}
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
 DAYS_RU = ["ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА", "СУББОТА", "ВОСКРЕСЕНЬЕ"]
+MONTHS_RU = ["", "января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+
+DAY_MAP = {
+    "понедельник": 0, "вторник": 1, "среда": 2, 
+    "четверг": 3, "пятница": 4, "суббота": 5
+}
 
 BASE_SCHEDULE_10A = {
-    0: {1: ("Раз-ры о важном", ""), 2: ("Геометрия", "306"), 3: ("Физика", "301"), 4: ("Физика", "301"), 5: ("Геометрия", "323"), 6: ("Алгебра", "323"), 7: ("Обществознание", "319")},
+    0: {1: ("Раз-ры о важном", ""), 2: ("Геометрия", "306"), 3: ("Физика", "301"), 4: ("Физика", "301"), 5: ("Геометрия", "323"), 6: ("Алгебра", "323"), 7: ("Обществознание", "319"), 8: ("ВИН", "")},
     1: {1: ("ВФи", "301"), 2: ("Геометрия", "201"), 3: ("ИП", "102"), 4: ("Литература", "218"), 5: ("Физика", "301"), 6: ("История", "101"), 7: ("Англ. язык", "206/217"), 8: ("Англ. язык", "206/217")},
     2: {1: ("Алгебра", "102"), 2: ("Литература", "301"), 3: ("Биология", "317"), 4: ("Русский язык", "307"), 5: ("История", "307"), 6: ("Алгебра", "102"), 7: ("ВЗн", "102")},
-    3: {1: ("Физика", "301"), 2: ("Физика", "301"), 3: ("Обществознание", "301"), 4: ("Геометрия", "306"), 5: ("Англ. язык", "206/217"), 6: ("Вер. и стат.", "306"), 7: ("Литература", "303")},
+    3: {1: ("Физика", "301"), 2: ("Физика", "301"), 3: ("Обществознание", "301"), 4: ("Геометрия", "306"), 5: ("Англ. язык", "206/217"), 6: ("Вер. и стат.", "306"), 7: ("Литература", "303"), 8: ("ВГо", "217")},
     4: {1: ("Информатика", "230/227"), 2: ("Русский язык", "321"), 3: ("География", "316"), 4: ("Химия", "323"), 5: ("Информатика", "230/227"), 6: ("Физика", "301"), 7: ("ВИН", "230")},
     5: {1: ("Физкультура", "сп.зал"), 2: ("Физкультура", "сп.зал"), 3: ("Алгебра", "225"), 4: ("Алгебра", "225"), 5: ("ОБЗР", "102"), 7: ("ВРЕ", "301")}
 }
 
-def get_day():
-    now = datetime.utcnow() + timedelta(hours=3) # Поправка на МСК (UTC+3)
-    if now.weekday() == 6 or (now.weekday() == 5 and now.hour >= 15):
-        return 0, "ПОНЕДЕЛЬНИК"
-    if now.hour >= 16:
-        nxt = now + timedelta(days=1)
-        return (0, "ПОНЕДЕЛЬНИК") if nxt.weekday() == 6 else (nxt.weekday(), DAYS_RU[nxt.weekday()])
-    return now.weekday(), DAYS_RU[now.weekday()]
+def parse_header_date(txt):
+    """Определяет день недели и число месяца из строки заголовка таблицы"""
+    t = txt.lower()
+    w_day = None
+    for name, idx in DAY_MAP.items():
+        if name in t:
+            w_day = idx
+            break
+
+    day_num = None
+    m = re.search(r'\b(\d{1,2})\s+(янв|фев|мар|апр|ма|июн|июл|авг|сен|окт|ноя|дек)', t)
+    if m:
+        day_num = int(m.group(1))
+    else:
+        m2 = re.search(r'\b(\d{1,2})\.\d{2}\b', t)
+        if m2:
+            day_num = int(m2.group(1))
+
+    return w_day, day_num
 
 def main():
-    target_weekday, day_title = get_day()
-    base = BASE_SCHEDULE_10A.get(target_weekday, {}).copy()
-    changes_by_day = {i: {} for i in range(7)}
-    current_weekday = None
+    now_msk = datetime.utcnow() + timedelta(hours=3) # Время МСК
+    today_num = now_msk.day
+    today_wday = now_msk.weekday()
+
+    # Вычисляем завтрашний учебный день
+    if today_wday == 5:    # Суббота -> в Пн (+2)
+        next_dt = now_msk + timedelta(days=2)
+    elif today_wday == 6:  # Воскресенье -> в Пн (+1)
+        next_dt = now_msk + timedelta(days=1)
+    else:                  # Будни -> следующий день (+1)
+        next_dt = now_msk + timedelta(days=1)
+
+    next_num = next_dt.day
+    next_wday = next_dt.weekday()
+
+    # Изменения, сгруппированные по дням: {(w_day, day_num): {lesson_num: (sub, room, is_canc)}}
+    changes_by_day = {}
+    current_key = None
 
     try:
-        res = requests.get(URL, headers=HEADERS, timeout=12)
+        res = requests.get(URL, headers=HEADERS, timeout=20)
         res.encoding = 'utf-8'
         soup = BeautifulSoup(res.text, "html.parser")
         is_students = False
 
-        for el in soup.find_all(['h1', 'h2', 'h3', 'p', 'div', 'tr']):
+        for el in soup.find_all(['h1', 'h2', 'h3', 'h4', 'p', 'div', 'b', 'strong', 'tr']):
             txt = el.get_text(" ", strip=True)
-            txt_lower = txt.lower()
+            txt_upper = txt.upper()
 
-            if "ОБУЧАЮЩИЕСЯ" in txt.upper() or "УЧАЩИЕСЯ" in txt.upper():
+            if "ОБУЧАЮЩИЕСЯ" in txt_upper or "УЧАЩИЕСЯ" in txt_upper:
                 is_students = True
                 continue
-            elif "ПЕДАГОГИ" in txt.upper() and len(txt) < 30 and is_students:
+            elif "ПЕДАГОГИ" in txt_upper and len(txt) < 30 and is_students:
                 is_students = False
                 continue
 
             if not is_students:
                 continue
 
-            for d_name, d_idx in DAY_MAP.items():
-                if d_name in txt_lower and ("изменения" in txt_lower or "расписани" in txt_lower or re.search(r'\d{1,2}\s+[а-я]+', txt_lower)):
-                    if len(txt) < 80:
-                        current_weekday = d_idx
-                        break
+            # Поиск даты в тексте
+            w, d = parse_header_date(txt)
+            if (w is not None or d is not None) and len(txt) < 80:
+                current_key = (w, d)
+                if current_key not in changes_by_day:
+                    changes_by_day[current_key] = {}
 
-            if el.name == 'tr' and current_weekday is not None:
+            # Разбор строк таблицы для 10а
+            if el.name == 'tr' and current_key is not None:
                 cells = [re.sub(r'\s+', ' ', td.get_text(strip=True)) for td in el.find_all(['td', 'th'])]
                 if len(cells) < 2:
                     continue
 
-                if re.search(r'\b10\s*[-–—/]?\s*[аa]', cells[0], re.IGNORECASE):
-                    row_str = " ".join(cells)
-                    is_canc = bool(re.search(r'(?i)\b(нет\s*урока|снят|отмен)', row_str))
+                first_cell = cells[0].strip()
+                # Исключаем учителей
+                if re.search(r'[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.', first_cell):
+                    continue
+
+                if re.search(r'\b10\s*[-–—/]?\s*[аa]', first_cell, re.IGNORECASE):
+                    row_full = " ".join(cells).upper()
+                    is_canc = "НЕТ" in row_full or "СНЯТ" in row_full or "ОТМЕН" in row_full
 
                     if len(cells) >= 3 and cells[1].isdigit():
                         num = int(cells[1])
                         sub = cells[2]
                         room = cells[3] if len(cells) > 3 else ""
-                        changes_by_day[current_weekday][num] = (sub, room, is_canc)
+                        changes_by_day[current_key][num] = (sub, room, is_canc)
                     elif is_canc:
-                        for digit in re.findall(r'\d+', row_str):
-                            changes_by_day[current_weekday][int(digit)] = ("Нет урока", "", True)
-    except Exception:
-        pass
+                        for digit in re.findall(r'\d+', row_full):
+                            changes_by_day[current_key][int(digit)] = ("УРОК СНЯТ", "", True)
+    except Exception as e:
+        print("Ошибка загрузки:", e)
 
-    day_changes = changes_by_day.get(target_weekday, {})
-    lines = [f"10А • {day_title}"]
+    # ВЫБОР ЦЕЛЕВОГО ДНЯ:
+    chosen_key = None
+    target_wday = None
+    target_title = ""
+
+    # 1. Проверяем, есть ли на сайте расписание на ЗАВТРА (например, на 11-е)
+    for key in changes_by_day.keys():
+        w, d = key
+        if (d is not None and d == next_num) or (d is None and w == next_wday):
+            chosen_key = key
+            target_wday = next_wday
+            target_title = f"{DAYS_RU[next_wday]} ({next_num} {MONTHS_RU[next_dt.month]})"
+            break
+
+    # 2. Если на завтра нет, проверяем, есть ли на СЕГОДНЯ (например, на 10-е)
+    if not chosen_key:
+        for key in changes_by_day.keys():
+            w, d = key
+            if (d is not None and d == today_num) or (d is None and w == today_wday):
+                chosen_key = key
+                target_wday = today_wday
+                target_title = f"{DAYS_RU[today_wday]} ({today_num} {MONTHS_RU[now_msk.month]})"
+                break
+
+    # 3. Если на сайте нет изменений ни на сегодня, ни на завтра
+    if not chosen_key:
+        # После 14:00 показываем завтрашний день
+        if now_msk.hour >= 14 or today_wday in (5, 6):
+            target_wday = next_wday
+            target_title = f"{DAYS_RU[next_wday]} ({next_num} {MONTHS_RU[next_dt.month]})"
+        else:
+            target_wday = today_wday
+            target_title = f"{DAYS_RU[today_wday]} ({today_num} {MONTHS_RU[now_msk.month]})"
+
+    base = BASE_SCHEDULE_10A.get(target_wday, {}).copy()
+    day_changes = changes_by_day.get(chosen_key, {})
+
+    lines = [f"10А • {target_title}"]
     all_nums = sorted(set(list(base.keys()) + list(day_changes.keys())))
 
     for num in all_nums:
         if num in day_changes:
             sub, room, cancelled = day_changes[num]
             r = f" ({room})" if room else ""
-            lines.append(f"{num} ур: ❌ {sub} [СНЯТ]" if cancelled else f"{num} ур: ⚡ {sub}{r}")
+            if cancelled:
+                lines.append(f"{num} ур: ❌ {sub}")
+            else:
+                lines.append(f"{num} ур: ⚡ {sub}{r} [ИЗМ]")
         elif num in base:
             sub, room = base[num]
             r = f" ({room})" if room else ""
