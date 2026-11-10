@@ -29,7 +29,8 @@ def get_day():
 def main():
     target_weekday, day_title = get_day()
     base = BASE_SCHEDULE_10A.get(target_weekday, {}).copy()
-    changes = {}
+    changes_by_day = {i: {} for i in range(7)}
+    current_weekday = None
 
     try:
         res = requests.get(URL, headers=HEADERS, timeout=12)
@@ -38,41 +39,54 @@ def main():
         is_students = False
 
         for el in soup.find_all(['h1', 'h2', 'h3', 'p', 'div', 'tr']):
-            txt = el.get_text(" ", strip=True).upper()
-            if "ОБУЧАЮЩИЕСЯ" in txt or "УЧАЩИЕСЯ" in txt:
+            txt = el.get_text(" ", strip=True)
+            txt_lower = txt.lower()
+
+            if "ОБУЧАЮЩИЕСЯ" in txt.upper() or "УЧАЩИЕСЯ" in txt.upper():
                 is_students = True
                 continue
-            elif "ПЕДАГОГИ" in txt and len(txt) < 30 and is_students:
+            elif "ПЕДАГОГИ" in txt.upper() and len(txt) < 30 and is_students:
                 is_students = False
                 continue
 
-            if not is_students or el.name != 'tr':
+            if not is_students:
                 continue
 
-            cells = [re.sub(r'\s+', ' ', td.get_text(strip=True)) for td in el.find_all(['td', 'th'])]
-            if len(cells) < 2:
-                continue
+            for d_name, d_idx in DAY_MAP.items():
+                if d_name in txt_lower and ("изменения" in txt_lower or "расписани" in txt_lower or re.search(r'\d{1,2}\s+[а-я]+', txt_lower)):
+                    if len(txt) < 80:
+                        current_weekday = d_idx
+                        break
 
-            if re.search(r'\b10\s*[-–—]?\s*[аa]', cells[0], re.IGNORECASE):
-                if len(cells) >= 3 and cells[1].isdigit():
-                    num = int(cells[1])
-                    sub = cells[2]
-                    room = cells[3] if len(cells) > 3 else ""
-                    changes[num] = (sub, room, False)
-                elif "НЕТ" in " ".join(cells).upper():
-                    for digit in re.findall(r'\d+', " ".join(cells[1:])):
-                        changes[int(digit)] = ("УРОК СНЯТ", "", True)
-    except Exception as e:
+            if el.name == 'tr' and current_weekday is not None:
+                cells = [re.sub(r'\s+', ' ', td.get_text(strip=True)) for td in el.find_all(['td', 'th'])]
+                if len(cells) < 2:
+                    continue
+
+                if re.search(r'\b10\s*[-–—/]?\s*[аa]', cells[0], re.IGNORECASE):
+                    row_str = " ".join(cells)
+                    is_canc = bool(re.search(r'(?i)\b(нет\s*урока|снят|отмен)', row_str))
+
+                    if len(cells) >= 3 and cells[1].isdigit():
+                        num = int(cells[1])
+                        sub = cells[2]
+                        room = cells[3] if len(cells) > 3 else ""
+                        changes_by_day[current_weekday][num] = (sub, room, is_canc)
+                    elif is_canc:
+                        for digit in re.findall(r'\d+', row_str):
+                            changes_by_day[current_weekday][int(digit)] = ("Нет урока", "", True)
+    except Exception:
         pass
 
+    day_changes = changes_by_day.get(target_weekday, {})
     lines = [f"10А • {day_title}"]
-    all_nums = sorted(set(list(base.keys()) + list(changes.keys())))
+    all_nums = sorted(set(list(base.keys()) + list(day_changes.keys())))
 
     for num in all_nums:
-        if num in changes:
-            sub, room, cancelled = changes[num]
+        if num in day_changes:
+            sub, room, cancelled = day_changes[num]
             r = f" ({room})" if room else ""
-            lines.append(f"{num} ур: ⚡ {sub}{r}" if not cancelled else f"{num} ур: ❌ ОТМЕНА")
+            lines.append(f"{num} ур: ❌ {sub} [СНЯТ]" if cancelled else f"{num} ур: ⚡ {sub}{r}")
         elif num in base:
             sub, room = base[num]
             r = f" ({room})" if room else ""
