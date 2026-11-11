@@ -1,3 +1,4 @@
+import os
 import requests
 from bs4 import BeautifulSoup
 import re
@@ -24,7 +25,6 @@ BASE_SCHEDULE_10A = {
 }
 
 def parse_header_date(txt):
-    """Определяет день недели и число месяца из строки заголовка таблицы"""
     t = txt.lower()
     w_day = None
     for name, idx in DAY_MAP.items():
@@ -43,23 +43,36 @@ def parse_header_date(txt):
 
     return w_day, day_num
 
+def send_telegram_alert(message):
+    token = os.getenv("BOT_TOKEN")
+    chat_id = os.getenv("CHAT_ID")
+    if not token or not chat_id:
+        return
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        requests.post(url, json={
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "Markdown"
+        }, timeout=10)
+    except Exception as e:
+        print("Ошибка отправки в Telegram:", e)
+
 def main():
-    now_msk = datetime.utcnow() + timedelta(hours=3) # Время МСК
+    now_msk = datetime.utcnow() + timedelta(hours=3)
     today_num = now_msk.day
     today_wday = now_msk.weekday()
 
-    # Вычисляем завтрашний учебный день
-    if today_wday == 5:    # Суббота -> в Пн (+2)
+    if today_wday == 5:
         next_dt = now_msk + timedelta(days=2)
-    elif today_wday == 6:  # Воскресенье -> в Пн (+1)
+    elif today_wday == 6:
         next_dt = now_msk + timedelta(days=1)
-    else:                  # Будни -> следующий день (+1)
+    else:
         next_dt = now_msk + timedelta(days=1)
 
     next_num = next_dt.day
     next_wday = next_dt.weekday()
 
-    # Изменения, сгруппированные по дням: {(w_day, day_num): {lesson_num: (sub, room, is_canc)}}
     changes_by_day = {}
     current_key = None
 
@@ -83,21 +96,18 @@ def main():
             if not is_students:
                 continue
 
-            # Поиск даты в тексте
             w, d = parse_header_date(txt)
             if (w is not None or d is not None) and len(txt) < 80:
                 current_key = (w, d)
                 if current_key not in changes_by_day:
                     changes_by_day[current_key] = {}
 
-            # Разбор строк таблицы для 10а
             if el.name == 'tr' and current_key is not None:
                 cells = [re.sub(r'\s+', ' ', td.get_text(strip=True)) for td in el.find_all(['td', 'th'])]
                 if len(cells) < 2:
                     continue
 
                 first_cell = cells[0].strip()
-                # Исключаем учителей
                 if re.search(r'[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.', first_cell):
                     continue
 
@@ -116,12 +126,10 @@ def main():
     except Exception as e:
         print("Ошибка загрузки:", e)
 
-    # ВЫБОР ЦЕЛЕВОГО ДНЯ:
     chosen_key = None
     target_wday = None
     target_title = ""
 
-    # 1. Проверяем, есть ли на сайте расписание на ЗАВТРА (например, на 11-е)
     for key in changes_by_day.keys():
         w, d = key
         if (d is not None and d == next_num) or (d is None and w == next_wday):
@@ -130,7 +138,6 @@ def main():
             target_title = f"{DAYS_RU[next_wday]} ({next_num} {MONTHS_RU[next_dt.month]})"
             break
 
-    # 2. Если на завтра нет, проверяем, есть ли на СЕГОДНЯ (например, на 10-е)
     if not chosen_key:
         for key in changes_by_day.keys():
             w, d = key
@@ -140,9 +147,7 @@ def main():
                 target_title = f"{DAYS_RU[today_wday]} ({today_num} {MONTHS_RU[now_msk.month]})"
                 break
 
-    # 3. Если на сайте нет изменений ни на сегодня, ни на завтра
     if not chosen_key:
-        # После 14:00 показываем завтрашний день
         if now_msk.hour >= 14 or today_wday in (5, 6):
             target_wday = next_wday
             target_title = f"{DAYS_RU[next_wday]} ({next_num} {MONTHS_RU[next_dt.month]})"
@@ -169,8 +174,24 @@ def main():
             r = f" ({room})" if room else ""
             lines.append(f"{num} ур: {sub}{r}")
 
+    # Запись файла для KWGT-виджета
     with open("today_10a.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
+
+    # Логика отправки в Telegram при появлении НОВЫХ замен
+    current_sig = f"{target_title}_{sorted(day_changes.items())}" if day_changes else "NO_CHANGES"
+    last_sig = ""
+    if os.path.exists("last_changes_10a.txt"):
+        with open("last_changes_10a.txt", "r", encoding="utf-8") as f:
+            last_sig = f.read().strip()
+
+    if day_changes and current_sig != last_sig:
+        msg = f"🔔 *НОВЫЕ ЗАМЕНЫ ДЛЯ 10А!*\n\n📅 *{target_title}*\n" + "\n".join(lines[1:])
+        send_telegram_alert(msg)
+        print("Отправлено оповещение в Telegram")
+
+    with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
+        f.write(current_sig)
 
 if __name__ == "__main__":
     main()
