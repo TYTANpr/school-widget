@@ -130,6 +130,7 @@ def main():
     target_wday = None
     target_title = ""
 
+    # Проверка на завтра
     for key in changes_by_day.keys():
         w, d = key
         if (d is not None and d == next_num) or (d is None and w == next_wday):
@@ -138,6 +139,7 @@ def main():
             target_title = f"{DAYS_RU[next_wday]} ({next_num} {MONTHS_RU[next_dt.month]})"
             break
 
+    # Проверка на сегодня
     if not chosen_key:
         for key in changes_by_day.keys():
             w, d = key
@@ -174,11 +176,11 @@ def main():
             r = f" ({room})" if room else ""
             lines.append(f"{num} ур: {sub}{r}")
 
-    # Запись файла для KWGT-виджета
+    # 1. Запись файла для виджета 10А
     with open("today_10a.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
-    # Логика отправки в Telegram при появлении НОВЫХ замен
+    # 2. Отправка в Telegram только если появились НОВЫЕ замены
     current_sig = f"{target_title}_{sorted(day_changes.items())}" if day_changes else "NO_CHANGES"
     last_sig = ""
     if os.path.exists("last_changes_10a.txt"):
@@ -188,7 +190,7 @@ def main():
     if day_changes and current_sig != last_sig:
         msg = f"🔔 *НОВЫЕ ЗАМЕНЫ ДЛЯ 10А!*\n\n📅 *{target_title}*\n" + "\n".join(lines[1:])
         send_telegram_alert(msg)
-        print("Отправлено оповещение в Telegram")
+        print("Отправлено оповещение в Telegram для 10А")
 
     with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
         f.write(current_sig)
