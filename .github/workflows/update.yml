@@ -2,7 +2,12 @@ name: Update Schedule
 
 on:
   schedule:
-    - cron: '*/30 4-19 * * 1-6'
+    # 1. Вечерний пик завуча (с 16:00 до 00:00 по МСК): каждые 5 минут
+    - cron: '*/5 13-21 * * *'
+
+    # 2. Утренняя страховка перед уроками (с 7:00 до 8:30 по МСК): каждые 15 минут
+    - cron: '*/15 4-5 * * 1-6'
+
   workflow_dispatch:
 
 permissions:
@@ -27,6 +32,7 @@ jobs:
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+          TOPIC_ID: ${{ secrets.TOPIC_ID }}
         run: python parser.py
 
       - name: Run 7B parser (Только виджет)
