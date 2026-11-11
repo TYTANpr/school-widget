@@ -210,7 +210,7 @@ def main():
         f.write("\n".join(widget_lines))
 
     # Формирование сообщения для Telegram
-    tg_lines = [f"🔔 <b>ИЗМЕНЕНИЯ В РАСПИСАНИИ (10А)</b>", f"📅 <b>{target_title}</b>\n"]
+    tg_lines = [f"🔔 <b>ИЗМЕНЕНИЯ В РАСПИСАНИИ</b>", f"📅 <b>{target_title}</b>\n"]
 
     for num in all_nums:
         if num in day_changes:
