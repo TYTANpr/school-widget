@@ -195,9 +195,13 @@ def main():
             last_sig = f.read().strip()
 
     if day_changes and current_sig != last_sig:
-        msg = f"🔔 *НОВЫЕ ЗАМЕНЫ ДЛЯ 10А!*\n\n📅 *{target_title}*\n" + "\n".join(lines[1:])
+        msg = (
+            f"🔔 *НОВЫЕ ЗАМЕНЫ ДЛЯ 10А!*\n\n"
+            f"📅 *{target_title}*\n" +
+            "\n".join(lines[1:]) +
+            "\n\n🔗 [Сайт лицея 419](https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya)"
+        )
         send_telegram_alert(msg)
-        print("Отправлено оповещение в Telegram для 10А")
 
     with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
         f.write(current_sig)
