@@ -167,27 +167,49 @@ def main():
     base = BASE_SCHEDULE_10A.get(target_wday, {}).copy()
     day_changes = changes_by_day.get(chosen_key, {})
 
-    lines = [f"10А • {target_title}"]
+    # 1. ФОРМИРУЕМ ЧИСТЫЙ ТЕКСТ ДЛЯ ВИДЖЕТА НА ТЕЛЕФОНЕ (без лишних HTML тегов)
+    widget_lines = [f"10А • {target_title}"]
     all_nums = sorted(set(list(base.keys()) + list(day_changes.keys())))
 
     for num in all_nums:
         if num in day_changes:
             sub, room, cancelled = day_changes[num]
             r = f" ({room})" if room else ""
-            if cancelled:
-                lines.append(f"{num} ур: ❌ {sub}")
-            else:
-                lines.append(f"{num} ур: ⚡ {sub}{r} [ИЗМ]")
+            widget_lines.append(f"{num} ур: ❌ {sub}" if cancelled else f"{num} ур: ⚡ {sub}{r} [ИЗМ]")
         elif num in base:
             sub, room = base[num]
             r = f" ({room})" if room else ""
-            lines.append(f"{num} ур: {sub}{r}")
+            widget_lines.append(f"{num} ур: {sub}{r}")
 
-    # 1. Запись файла для виджета 10А
     with open("today_10a.txt", "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
+        f.write("\n".join(widget_lines))
 
-    # 2. Отправка в Telegram только если появились НОВЫЕ замены
+    # 2. ФОРМИРУЕМ КРАСИВОЕ СООБЩЕНИЕ ДЛЯ TELEGRAM С КАРТОЧКАМИ
+    tg_lines = [f"🔔 <b>ИЗМЕНЕНИЯ В РАСПИСАНИИ (10А)</b>", f"📅 <b>{target_title}</b>\n"]
+
+    for num in all_nums:
+        if num in day_changes:
+            sub, room, cancelled = day_changes[num]
+            r = f" (каб. {room})" if room else ""
+            old_subj = base.get(num, ("", ""))[0]
+            
+            if cancelled:
+                # Отменённый урок (красный маркер + зачёркивание старого)
+                old_info = f" <s>{old_subj}</s>" if old_subj else ""
+                tg_lines.append(f"<blockquote>❌ <b>{num} урок: УРОК СНЯТ</b>{old_info}</blockquote>")
+            else:
+                # Изменённый урок (выделенная плашка с полосой слева + что заменили)
+                old_info = f"\n   ↳ <i>Вместо: <s>{old_subj}</s></i>" if old_subj else ""
+                tg_lines.append(f"<blockquote>⚡ <b>{num} урок: {sub}{r}</b>{old_info}</blockquote>")
+        elif num in base:
+            sub, room = base[num]
+            r = f" (каб. {room})" if room else ""
+            tg_lines.append(f"🔹 {num} ур: {sub}{r}")
+
+    # Добавляем кликабельные ссылки внизу
+    tg_lines.append("\n🌐 <a href=\"https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya\">Сайт лицея</a> • 📱 <a href=\"https://tytanpr.github.io/school-widget/\">Виджет</a>")
+
+    # 3. ОТПРАВКА ТОЛЬКО ПРИ НОВЫХ ЗАМЕНАХ
     current_sig = f"{target_title}_{sorted(day_changes.items())}" if day_changes else "NO_CHANGES"
     last_sig = ""
     if os.path.exists("last_changes_10a.txt"):
@@ -195,13 +217,8 @@ def main():
             last_sig = f.read().strip()
 
     if day_changes and current_sig != last_sig:
-        msg = (
-            f"🔔 *НОВЫЕ ЗАМЕНЫ ДЛЯ 10А!*\n\n"
-            f"📅 *{target_title}*\n" +
-            "\n".join(lines[1:]) +
-            "\n\n🔗 [Изменения](https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya)"
-        )
-        send_telegram_alert(msg)
+        send_telegram_alert("\n".join(tg_lines))
+        print("Отправлено красивое оповещение в Telegram")
 
     with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
         f.write(current_sig)
