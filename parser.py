@@ -209,8 +209,48 @@ def main():
         f.write("\n".join(widget_lines))
 
     # 2. Формирование сообщения для Telegram
-    tg_lines = [f"🔔 <b>ИЗМЕНЕНИЯ В РАСПИСАНИИ (10А)</b>", f"📅 <b>{target_title}</b>\n"]
+    if day_changes:
+        tg_header = f"🔔 <b>ИЗМЕНЕНИЯ В РАСПИСАНИИ (10А)</b>\n📅 <b>{target_title}</b>\n"
+    else:
+        tg_header = f"🟢 <b>РАСПИСАНИЕ (10А)</b>\n📅 <b>{target_title}</b>\n\n✅ <i>Изменений нет, уроки по обычному графику:</i>\n"
+
+    tg_lines = [tg_header]
 
     for num in all_nums:
         if num in day_changes:
-            sub, r
+            sub, room, cancelled = day_changes[num]
+            r = f" (каб. {room})" if room else ""
+            old_subj = base.get(num, ("", ""))[0]
+
+            if cancelled:
+                old_info = f" <s>{old_subj}</s>" if old_subj else ""
+                tg_lines.append(f"<blockquote>❌ <b>{num} урок: УРОК СНЯТ</b>{old_info}</blockquote>")
+            else:
+                old_info = f"\n   ↳ <i>Вместо: <s>{old_subj}</s></i>" if old_subj else ""
+                tg_lines.append(f"<blockquote>⚡ <b>{num} урок: {sub}{r}</b>{old_info}</blockquote>")
+        elif num in base:
+            sub, room = base[num]
+            r = f" (каб. {room})" if room else ""
+            tg_lines.append(f"🔹 {num} ур: {sub}{r}")
+
+    tg_lines.append("\n🌐 <a href=\"https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya\">Сайт лицея</a> • 📱 <a href=\"https://raw.githubusercontent.com/TYTANpr/school-widget/main/today_10a.txt\">Виджет</a>")
+
+    # 3. Умная отправка: присылает сообщение РОВНО 1 РАЗ на каждый новый день
+    # Если замен нет — напишет "Изменений нет". Если позже завуч добавит замену — пришлёт обновление!
+    current_sig = f"{target_title}_{sorted(day_changes.items())}"
+    last_sig = ""
+    if os.path.exists("last_changes_10a.txt"):
+        with open("last_changes_10a.txt", "r", encoding="utf-8") as f:
+            last_sig = f.read().strip()
+
+    if current_sig != last_sig:
+        print(f"📨 Отправка в Telegram для {target_title}...")
+        send_telegram_alert("\n".join(tg_lines))
+    else:
+        print(f"ℹ️ Для {target_title} расписание уже отправлено. Пропуск дубликата.")
+
+    with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
+        f.write(current_sig)
+
+if __name__ == "__main__":
+    main()
