@@ -11,8 +11,12 @@ DAYS_RU = ["ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕ
 MONTHS_RU = ["", "января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
 
 DAY_MAP = {
-    "понедельник": 0, "вторник": 1, "среда": 2, 
-    "четверг": 3, "пятница": 4, "суббота": 5
+    "понедельник": 0, "пн": 0,
+    "вторник": 1, "вт": 1,
+    "среда": 2, "ср": 2,
+    "четверг": 3, "чт": 3,
+    "пятница": 4, "пт": 4,
+    "суббота": 5, "сб": 5
 }
 
 BASE_SCHEDULE_10A = {
@@ -28,7 +32,7 @@ def parse_header_date(txt):
     t = txt.lower()
     w_day = None
     for name, idx in DAY_MAP.items():
-        if name in t:
+        if re.search(r'\b' + name, t):
             w_day = idx
             break
 
@@ -37,7 +41,7 @@ def parse_header_date(txt):
     if m:
         day_num = int(m.group(1))
     else:
-        m2 = re.search(r'\b(\d{1,2})\.\d{2}\b', t)
+        m2 = re.search(r'\b(\d{1,2})\.\d{2}', t)
         if m2:
             day_num = int(m2.group(1))
 
@@ -83,21 +87,40 @@ def main():
     next_num = next_dt.day
     next_wday = next_dt.weekday()
 
-    changes_by_day = {}
-    current_key = ("текущие", None)
-    changes_by_day[current_key] = {}
+    # ЕСЛИ ВРЕМЯ ПОСЛЕ 14:00 — ЦЕЛЕВОЙ ДЕНЬ ВСЕГДА ЗАВТРА!
+    if now_msk.hour >= 14 or today_wday in (5, 6):
+        target_wday = next_wday
+        target_num = next_num
+        target_dt = next_dt
+        target_title = f"{DAYS_RU[next_wday]} ({next_num} {MONTHS_RU[next_dt.month]})"
+    else:
+        target_wday = today_wday
+        target_num = today_num
+        target_dt = now_msk
+        target_title = f"{DAYS_RU[today_wday]} ({today_num} {MONTHS_RU[now_msk.month]})"
 
     print(f"🔍 Запуск парсера... Время (МСК): {now_msk.strftime('%d.%m %H:%M')}")
+    print(f"🎯 Ищем расписание на: {target_title}")
+
+    changes_by_day = {}
+    current_key = (None, None)
+    is_students = False
 
     try:
         res = requests.get(URL, headers=HEADERS, timeout=20)
         res.encoding = 'utf-8'
         soup = BeautifulSoup(res.text, "html.parser")
-        is_students = False
 
         for el in soup.find_all(['h1', 'h2', 'h3', 'h4', 'p', 'div', 'b', 'strong', 'tr']):
             txt = el.get_text(" ", strip=True)
             txt_upper = txt.upper()
+
+            # Дата может быть в любом месте (до или после слова обучающиеся)
+            w, d = parse_header_date(txt)
+            if (w is not None or d is not None) and len(txt) < 250:
+                current_key = (w, d)
+                if current_key not in changes_by_day:
+                    changes_by_day[current_key] = {}
 
             if "ОБУЧАЮЩИЕСЯ" in txt_upper or "УЧАЩИЕСЯ" in txt_upper:
                 is_students = True
@@ -106,93 +129,69 @@ def main():
                 is_students = False
                 continue
 
-            if not is_students:
+            if not is_students or el.name != 'tr':
                 continue
 
-            w, d = parse_header_date(txt)
-            if (w is not None or d is not None) and len(txt) < 80:
-                current_key = (w, d)
-                if current_key not in changes_by_day:
-                    changes_by_day[current_key] = {}
+            cells = [re.sub(r'\s+', ' ', td.get_text(strip=True)) for td in el.find_all(['td', 'th'])]
+            if len(cells) < 2:
+                continue
 
-            if el.name == 'tr' and current_key is not None:
-                cells = [re.sub(r'\s+', ' ', td.get_text(strip=True)) for td in el.find_all(['td', 'th'])]
-                if len(cells) < 2:
-                    continue
+            # Исключаем учителей
+            if re.search(r'[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.', cells[0]):
+                continue
 
-                first_cell = cells[0].strip()
-                if re.search(r'[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.', first_cell):
-                    continue
+            # Ищем 10А в первой или второй ячейке
+            is_10a = False
+            class_cell = ""
+            for c in cells[:2]:
+                if re.search(r'\b10\s*[-–—/]?\s*[аa]', c, re.IGNORECASE):
+                    is_10a = True
+                    class_cell = c
+                    break
 
-                # Поиск 10А
-                if re.search(r'\b10\s*[-–—/]?\s*[аa]', first_cell, re.IGNORECASE):
-                    row_full = " ".join(cells).upper()
-                    is_canc = "НЕТ" in row_full or "СНЯТ" in row_full or "ОТМЕН" in row_full
+            if is_10a:
+                row_full = " ".join(cells).upper()
+                is_canc = "НЕТ" in row_full or "СНЯТ" in row_full or "ОТМЕН" in row_full
 
-                    if len(cells) >= 3 and cells[1].isdigit():
-                        num = int(cells[1])
-                        sub = cells[2]
-                        room = cells[3] if len(cells) > 3 else ""
-                        changes_by_day[current_key][num] = (sub, room, is_canc)
-                    elif is_canc:
-                        for digit in re.findall(r'\d+', row_full):
-                            changes_by_day[current_key][int(digit)] = ("УРОК СНЯТ", "", True)
+                lesson_num = None
+                for c in cells:
+                    if c != class_cell and c.isdigit():
+                        lesson_num = int(c)
+                        break
+
+                if lesson_num:
+                    sub = cells[2] if len(cells) > 2 and cells[1].isdigit() else (cells[1] if len(cells) > 1 else "")
+                    room = cells[3] if len(cells) > 3 else ""
+                    if current_key not in changes_by_day:
+                        changes_by_day[current_key] = {}
+                    changes_by_day[current_key][lesson_num] = (sub, room, is_canc)
+                elif is_canc:
+                    for digit in re.findall(r'\d+', row_full):
+                        if current_key not in changes_by_day:
+                            changes_by_day[current_key] = {}
+                        changes_by_day[current_key][int(digit)] = ("УРОК СНЯТ", "", True)
     except Exception as e:
         print(f"Ошибка загрузки сайта: {e}")
 
-    chosen_key = None
-    target_wday = None
-    target_title = ""
+    # Собираем замены для целевого дня (ЧЕТВЕРГ)
+    day_changes = {}
+    for (w, d), ch in changes_by_day.items():
+        if (d is not None and d == target_num) or (d is None and w is not None and w == target_wday):
+            day_changes.update(ch)
 
-    # 1. Проверяем, есть ли замены на завтра
-    for key in changes_by_day.keys():
-        w, d = key
-        if (d is not None and d == next_num) or (d is None and w == next_wday):
-            if changes_by_day[key]:
-                chosen_key = key
-                target_wday = next_wday
-                target_title = f"{DAYS_RU[next_wday]} ({next_num} {MONTHS_RU[next_dt.month]})"
+    # Если точной даты не было, но на сайте найдены замены для этого дня недели
+    if not day_changes:
+        for (w, d), ch in changes_by_day.items():
+            if w == target_wday and ch:
+                day_changes.update(ch)
                 break
-
-    # 2. Если на завтра нет, проверяем на сегодня
-    if not chosen_key:
-        for key in changes_by_day.keys():
-            w, d = key
-            if (d is not None and d == today_num) or (d is None and w == today_wday):
-                if changes_by_day[key]:
-                    chosen_key = key
-                    target_wday = today_wday
-                    target_title = f"{DAYS_RU[today_wday]} ({today_num} {MONTHS_RU[now_msk.month]})"
-                    break
-
-    # 3. ГЛАВНОЕ: если на сегодня/завтра нет, но на сайте висит прошлая реальная замена — БЕРЁМ ЕЁ!
-    if not chosen_key:
-        for key in reversed(list(changes_by_day.keys())):
-            if changes_by_day[key]:  # нашли замену на сайте
-                chosen_key = key
-                w, d = key
-                target_wday = w if (isinstance(w, int) and 0 <= w <= 5) else today_wday
-                d_str = f" ({d} {MONTHS_RU[now_msk.month]})" if d else ""
-                w_str = DAYS_RU[target_wday]
-                target_title = f"{w_str}{d_str} [С САЙТА]"
-                break
-
-    # 4. Если на сайте вообще нет замен ни для кого
-    if not chosen_key:
-        if now_msk.hour >= 14 or today_wday in (5, 6):
-            target_wday = next_wday
-            target_title = f"{DAYS_RU[next_wday]} ({next_num} {MONTHS_RU[next_dt.month]})"
-        else:
-            target_wday = today_wday
-            target_title = f"{DAYS_RU[today_wday]} ({today_num} {MONTHS_RU[now_msk.month]})"
 
     base = BASE_SCHEDULE_10A.get(target_wday, {}).copy()
-    day_changes = changes_by_day.get(chosen_key, {})
 
-    print(f"📊 Выбран блок: {target_title}")
-    print(f"⚡ Найдено реальных замен с сайта для 10А: {len(day_changes)}")
+    print(f"📊 Выбран целевой день: {target_title}")
+    print(f"⚡ Найдено замен для 10А на этот день: {len(day_changes)}")
 
-    # Формирование виджета
+    # 1. Запись для виджета на телефон / ПК
     widget_lines = [f"10А • {target_title}"]
     all_nums = sorted(set(list(base.keys()) + list(day_changes.keys())))
 
@@ -209,46 +208,9 @@ def main():
     with open("today_10a.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(widget_lines))
 
-    # Формирование сообщения для Telegram
-    tg_lines = [f"🔔 <b>ИЗМЕНЕНИЯ В РАСПИСАНИИ</b>", f"📅 <b>{target_title}</b>\n"]
+    # 2. Формирование сообщения для Telegram
+    tg_lines = [f"🔔 <b>ИЗМЕНЕНИЯ В РАСПИСАНИИ (10А)</b>", f"📅 <b>{target_title}</b>\n"]
 
     for num in all_nums:
         if num in day_changes:
-            sub, room, cancelled = day_changes[num]
-            r = f" (каб. {room})" if room else ""
-            old_subj = base.get(num, ("", ""))[0]
-
-            if cancelled:
-                old_info = f" <s>{old_subj}</s>" if old_subj else ""
-                tg_lines.append(f"<blockquote>❌ <b>{num} урок: УРОК СНЯТ</b>{old_info}</blockquote>")
-            else:
-                old_info = f"\n   ↳ <i>Вместо: <s>{old_subj}</s></i>" if old_subj else ""
-                tg_lines.append(f"<blockquote>⚡ <b>{num} урок: {sub}{r}</b>{old_info}</blockquote>")
-        elif num in base:
-            sub, room = base[num]
-            r = f" (каб. {room})" if room else ""
-            tg_lines.append(f"🔹 {num} ур: {sub}{r}")
-
-    tg_lines.append("\n🌐 <a href=\"https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya\">Сайт лицея</a> • 📱 <a href=\"https://tytanpr.github.io/school-widget/\">Виджет</a>")
-
-    # Отправка в Telegram
-    current_sig = f"{target_title}_{sorted(day_changes.items())}" if day_changes else "NO_CHANGES"
-    last_sig = ""
-    if os.path.exists("last_changes_10a.txt"):
-        with open("last_changes_10a.txt", "r", encoding="utf-8") as f:
-            last_sig = f.read().strip()
-
-    if day_changes and current_sig != last_sig:
-        print("📨 Найдена замена с сайта! Отправляем в Telegram...")
-        send_telegram_alert("\n".join(tg_lines))
-    else:
-        if not day_changes:
-            print("ℹ️ На сайте нет замен для 10А ни за один день.")
-        else:
-            print("ℹ️ Эта замена уже была отправлена ранее.")
-
-    with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
-        f.write(current_sig)
-
-if __name__ == "__main__":
-    main()
+            sub, r
