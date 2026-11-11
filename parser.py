@@ -46,11 +46,11 @@ def parse_header_date(txt):
 def send_telegram_alert(message):
     token = os.getenv("BOT_TOKEN")
     chat_id = os.getenv("CHAT_ID") or "-1002391481594"
-    topic_id = 21
+    topic_id = int(os.getenv("TOPIC_ID", "21"))
 
     if not token:
-        print("Ошибка: BOT_TOKEN не найден в переменных окружения")
-        return
+        print("⚠️ Ошибка: BOT_TOKEN не задан")
+        return False
 
     try:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -58,12 +58,15 @@ def send_telegram_alert(message):
             "chat_id": chat_id,
             "message_thread_id": topic_id,
             "text": message,
-            "parse_mode": "HTML"              # <--- ПЕРЕКЛЮЧИЛИ НА HTML
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True
         }
-        res = requests.post(url, json=payload, timeout=10)
+        res = requests.post(url, json=payload, timeout=12)
         print("Ответ Telegram:", res.status_code, res.text)
+        return res.status_code == 200
     except Exception as e:
         print("Ошибка отправки в Telegram:", e)
+        return False
 
 def main():
     now_msk = datetime.utcnow() + timedelta(hours=3)
@@ -81,7 +84,10 @@ def main():
     next_wday = next_dt.weekday()
 
     changes_by_day = {}
-    current_key = None
+    current_key = ("текущие", None)
+    changes_by_day[current_key] = {}
+
+    print(f"🔍 Запуск парсера... Время (МСК): {now_msk.strftime('%d.%m %H:%M')}")
 
     try:
         res = requests.get(URL, headers=HEADERS, timeout=20)
@@ -118,6 +124,7 @@ def main():
                 if re.search(r'[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.', first_cell):
                     continue
 
+                # Поиск 10А
                 if re.search(r'\b10\s*[-–—/]?\s*[аa]', first_cell, re.IGNORECASE):
                     row_full = " ".join(cells).upper()
                     is_canc = "НЕТ" in row_full or "СНЯТ" in row_full or "ОТМЕН" in row_full
@@ -131,31 +138,46 @@ def main():
                         for digit in re.findall(r'\d+', row_full):
                             changes_by_day[current_key][int(digit)] = ("УРОК СНЯТ", "", True)
     except Exception as e:
-        print("Ошибка загрузки:", e)
+        print(f"Ошибка загрузки сайта: {e}")
 
     chosen_key = None
     target_wday = None
     target_title = ""
 
-    # Проверка на завтра
+    # 1. Проверяем, есть ли замены на завтра
     for key in changes_by_day.keys():
         w, d = key
         if (d is not None and d == next_num) or (d is None and w == next_wday):
-            chosen_key = key
-            target_wday = next_wday
-            target_title = f"{DAYS_RU[next_wday]} ({next_num} {MONTHS_RU[next_dt.month]})"
-            break
+            if changes_by_day[key]:
+                chosen_key = key
+                target_wday = next_wday
+                target_title = f"{DAYS_RU[next_wday]} ({next_num} {MONTHS_RU[next_dt.month]})"
+                break
 
-    # Проверка на сегодня
+    # 2. Если на завтра нет, проверяем на сегодня
     if not chosen_key:
         for key in changes_by_day.keys():
             w, d = key
             if (d is not None and d == today_num) or (d is None and w == today_wday):
+                if changes_by_day[key]:
+                    chosen_key = key
+                    target_wday = today_wday
+                    target_title = f"{DAYS_RU[today_wday]} ({today_num} {MONTHS_RU[now_msk.month]})"
+                    break
+
+    # 3. ГЛАВНОЕ: если на сегодня/завтра нет, но на сайте висит прошлая реальная замена — БЕРЁМ ЕЁ!
+    if not chosen_key:
+        for key in reversed(list(changes_by_day.keys())):
+            if changes_by_day[key]:  # нашли замену на сайте
                 chosen_key = key
-                target_wday = today_wday
-                target_title = f"{DAYS_RU[today_wday]} ({today_num} {MONTHS_RU[now_msk.month]})"
+                w, d = key
+                target_wday = w if (isinstance(w, int) and 0 <= w <= 5) else today_wday
+                d_str = f" ({d} {MONTHS_RU[now_msk.month]})" if d else ""
+                w_str = DAYS_RU[target_wday]
+                target_title = f"{w_str}{d_str} [С САЙТА]"
                 break
 
+    # 4. Если на сайте вообще нет замен ни для кого
     if not chosen_key:
         if now_msk.hour >= 14 or today_wday in (5, 6):
             target_wday = next_wday
@@ -167,7 +189,10 @@ def main():
     base = BASE_SCHEDULE_10A.get(target_wday, {}).copy()
     day_changes = changes_by_day.get(chosen_key, {})
 
-    # 1. ФОРМИРУЕМ ЧИСТЫЙ ТЕКСТ ДЛЯ ВИДЖЕТА НА ТЕЛЕФОНЕ (без лишних HTML тегов)
+    print(f"📊 Выбран блок: {target_title}")
+    print(f"⚡ Найдено реальных замен с сайта для 10А: {len(day_changes)}")
+
+    # Формирование виджета
     widget_lines = [f"10А • {target_title}"]
     all_nums = sorted(set(list(base.keys()) + list(day_changes.keys())))
 
@@ -184,7 +209,7 @@ def main():
     with open("today_10a.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(widget_lines))
 
-    # 2. ФОРМИРУЕМ КРАСИВОЕ СООБЩЕНИЕ ДЛЯ TELEGRAM С КАРТОЧКАМИ
+    # Формирование сообщения для Telegram
     tg_lines = [f"🔔 <b>ИЗМЕНЕНИЯ В РАСПИСАНИИ (10А)</b>", f"📅 <b>{target_title}</b>\n"]
 
     for num in all_nums:
@@ -192,13 +217,11 @@ def main():
             sub, room, cancelled = day_changes[num]
             r = f" (каб. {room})" if room else ""
             old_subj = base.get(num, ("", ""))[0]
-            
+
             if cancelled:
-                # Отменённый урок (красный маркер + зачёркивание старого)
                 old_info = f" <s>{old_subj}</s>" if old_subj else ""
                 tg_lines.append(f"<blockquote>❌ <b>{num} урок: УРОК СНЯТ</b>{old_info}</blockquote>")
             else:
-                # Изменённый урок (выделенная плашка с полосой слева + что заменили)
                 old_info = f"\n   ↳ <i>Вместо: <s>{old_subj}</s></i>" if old_subj else ""
                 tg_lines.append(f"<blockquote>⚡ <b>{num} урок: {sub}{r}</b>{old_info}</blockquote>")
         elif num in base:
@@ -206,10 +229,9 @@ def main():
             r = f" (каб. {room})" if room else ""
             tg_lines.append(f"🔹 {num} ур: {sub}{r}")
 
-    # Добавляем кликабельные ссылки внизу
     tg_lines.append("\n🌐 <a href=\"https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya\">Сайт лицея</a> • 📱 <a href=\"https://tytanpr.github.io/school-widget/\">Виджет</a>")
 
-    # 3. ОТПРАВКА ТОЛЬКО ПРИ НОВЫХ ЗАМЕНАХ
+    # Отправка в Telegram
     current_sig = f"{target_title}_{sorted(day_changes.items())}" if day_changes else "NO_CHANGES"
     last_sig = ""
     if os.path.exists("last_changes_10a.txt"):
@@ -217,8 +239,13 @@ def main():
             last_sig = f.read().strip()
 
     if day_changes and current_sig != last_sig:
+        print("📨 Найдена замена с сайта! Отправляем в Telegram...")
         send_telegram_alert("\n".join(tg_lines))
-        print("Отправлено красивое оповещение в Telegram")
+    else:
+        if not day_changes:
+            print("ℹ️ На сайте нет замен для 10А ни за один день.")
+        else:
+            print("ℹ️ Эта замена уже была отправлена ранее.")
 
     with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
         f.write(current_sig)
