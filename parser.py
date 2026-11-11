@@ -45,16 +45,23 @@ def parse_header_date(txt):
 
 def send_telegram_alert(message):
     token = os.getenv("BOT_TOKEN")
-    chat_id = os.getenv("CHAT_ID")
-    if not token or not chat_id:
+    chat_id = os.getenv("CHAT_ID") or "-1002391481594"
+    topic_id = 21  # Прямо указываем тему "домашка" (ID 21)
+
+    if not token:
+        print("Ошибка: BOT_TOKEN не найден в переменных окружения")
         return
+
     try:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        requests.post(url, json={
+        payload = {
             "chat_id": chat_id,
+            "message_thread_id": topic_id,  # Отправка строго в тему 21
             "text": message,
             "parse_mode": "Markdown"
-        }, timeout=10)
+        }
+        res = requests.post(url, json=payload, timeout=10)
+        print("Ответ Telegram:", res.status_code, res.text)
     except Exception as e:
         print("Ошибка отправки в Telegram:", e)
 
