@@ -194,10 +194,10 @@ def main():
         with open("last_changes_10a.txt", "r", encoding="utf-8") as f:
             last_sig = f.read().strip()
 
-    # ТЕСТОВАЯ ОТПРАВКА: отправит расписание в любом случае
-    test_msg = f"🤖 *Тест связи бота Лицея 419!*\n\n📅 *{target_title}*\n" + "\n".join(lines[1:])
-    send_telegram_alert(test_msg)
-    print("Отправлен тест в Telegram")
+    if day_changes and current_sig != last_sig:
+        msg = f"🔔 *НОВЫЕ ЗАМЕНЫ ДЛЯ 10А!*\n\n📅 *{target_title}*\n" + "\n".join(lines[1:])
+        send_telegram_alert(msg)
+        print("Отправлено оповещение в Telegram для 10А")
 
     with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
         f.write(current_sig)
