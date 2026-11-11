@@ -199,7 +199,7 @@ def main():
             f"🔔 *НОВЫЕ ЗАМЕНЫ ДЛЯ 10А!*\n\n"
             f"📅 *{target_title}*\n" +
             "\n".join(lines[1:]) +
-            "\n\n🔗 [Сайт лицея 419](https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya)"
+            "\n\n🔗 [Изменения](https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya)"
         )
         send_telegram_alert(msg)
 
