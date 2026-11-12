@@ -11,99 +11,34 @@ DAYS_RU = ["ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕ
 MONTHS_RU = ["", "января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
 
 DAY_MAP = {
-    "понедельник": 0, "пн": 0,
-    "вторник": 1, "вт": 1,
-    "среда": 2, "ср": 2,
-    "четверг": 3, "чт": 3,
-    "пятница": 4, "пт": 4,
-    "суббота": 5, "сб": 5
+    "понедельник": 0, "пн": 0, "вторник": 1, "вт": 1,
+    "среда": 2, "ср": 2, "четверг": 3, "чт": 3,
+    "пятница": 4, "пт": 4, "суббота": 5, "сб": 5
 }
 
 SHORT_NAMES = {
-    "обществознание": "Общ-ние",
-    "английский язык": "Ин. яз",
-    "англ. язык": "Ин. яз",
-    "анг/анг": "Ин. яз",
-    "английский": "Ин. яз",
-    "раз-ры о важном": "Разг. о важном",
-    "разговоры о важном": "Разг. о важном",
-    "вероятность и статистика": "Вер. и стат.",
-    "вер. и статистика": "Вер. и стат.",
-    "информатика": "Информ.",
-    "инф/инф": "Информ.",
-    "физкультура": "Физ-ра",
-    "ф.культура": "Физ-ра",
-    "ф.к/ф.к": "Физ-ра",
-    "литература": "Лит-ра",
-    "русский язык": "Рус. яз",
+    "обществознание": "Общ-ние", "английский язык": "Ин. яз", "англ. язык": "Ин. яз",
+    "анг/анг": "Ин. яз", "английский": "Ин. яз", "раз-ры о важном": "Разг. о важном",
+    "разговоры о важном": "Разг. о важном", "вероятность и статистика": "Вер. и стат.",
+    "вер. и статистика": "Вер. и стат.", "информатика": "Информ.", "инф/инф": "Информ.",
+    "физкультура": "Физ-ра", "ф.культура": "Физ-ра", "ф.к/ф.к": "Физ-ра",
+    "литература": "Лит-ра", "русский язык": "Рус. яз"
 }
 
 def clean_subj(name):
-    """Сокращает длинные названия предметов, чтобы они не переносились на 2 строки"""
-    if not name:
-        return ""
+    if not name: return ""
     low = name.strip().lower()
     for k, v in SHORT_NAMES.items():
-        if k in low:
-            return v
+        if k in low: return v
     return name.strip()
 
 BASE_SCHEDULE_10A = {
-    0: {
-        1: ("Разг. о важном", ""),
-        2: ("Геометрия", "306"),
-        3: ("Физика", "301"),
-        4: ("Физика", "301"),
-        5: ("Геометрия", "323"),
-        6: ("Алгебра", "323"),
-        7: ("Общ-ние", "319"),
-        8: ("ВИН", ""),
-    },
-    1: {
-        1: ("ВРЕ", "301"),
-        2: ("Геометрия", "201"),
-        3: ("ИП", "102"),
-        4: ("Лит-ра", "218"),
-        5: ("Физика", "301"),
-        6: ("История", "101"),
-        7: ("Ин. яз", "206/217"),
-        8: ("Ин. яз", "206/217"),
-    },
-    2: {
-        1: ("Алгебра", "102"),
-        2: ("Лит-ра", "301"),
-        3: ("Биология", "317"),
-        4: ("Рус. яз", "307"),
-        5: ("История", "307"),
-        6: ("Алгебра", "102"),
-        7: ("ВЗн", "102"),
-    },
-    3: {
-        1: ("Физика", "301"),
-        2: ("Физика", "301"),
-        3: ("Общ-ние", "301"),
-        4: ("Геометрия", "306"),
-        5: ("Ин. яз", "206/217"),
-        6: ("Вер. и стат.", "306"),
-        7: ("Лит-ра", "303"),
-        8: ("ВГо", "217"),
-    },
-    4: {
-        1: ("Информ.", "230/227"),
-        2: ("Рус. яз", "321"),
-        3: ("География", "316"),
-        4: ("Химия", "323"),
-        5: ("Информ.", "230/227"),
-        6: ("Физика", "301"),
-        7: ("ВИН", "230"),
-    },
-    5: {
-        1: ("Физ-ра", "сп.зал"),
-        2: ("Физ-ра", "сп.зал"),
-        3: ("Алгебра", "225"),
-        4: ("Алгебра", "225"),
-        5: ("ОБЗР", "102"),
-    },
+    0: {1: ("Разг. о важном", ""), 2: ("Геометрия", "306"), 3: ("Физика", "301"), 4: ("Физика", "301"), 5: ("Геометрия", "323"), 6: ("Алгебра", "323"), 7: ("Общ-ние", "319"), 8: ("ВИН", "")},
+    1: {1: ("ВРЕ", "301"), 2: ("Геометрия", "201"), 3: ("ИП", "102"), 4: ("Лит-ра", "218"), 5: ("Физика", "301"), 6: ("История", "101"), 7: ("Ин. яз", "206/217"), 8: ("Ин. яз", "206/217")},
+    2: {1: ("Алгебра", "102"), 2: ("Лит-ра", "301"), 3: ("Биология", "317"), 4: ("Рус. яз", "307"), 5: ("История", "307"), 6: ("Алгебра", "102"), 7: ("ВЗн", "102")},
+    3: {1: ("Физика", "301"), 2: ("Физика", "301"), 3: ("Общ-ние", "301"), 4: ("Геометрия", "306"), 5: ("Ин. яз", "206/217"), 6: ("Вер. и стат.", "306"), 7: ("Лит-ра", "303"), 8: ("ВГо", "217")},
+    4: {1: ("Информ.", "230/227"), 2: ("Рус. яз", "321"), 3: ("География", "316"), 4: ("Химия", "323"), 5: ("Информ.", "230/227"), 6: ("Физика", "301"), 7: ("ВИН", "230")},
+    5: {1: ("Физ-ра", "сп.зал"), 2: ("Физ-ра", "сп.зал"), 3: ("Алгебра", "225"), 4: ("Алгебра", "225"), 5: ("ОБЗР", "102")}
 }
 
 def parse_header_date(txt):
@@ -113,7 +48,6 @@ def parse_header_date(txt):
         if re.search(r'\b' + name, t):
             w_day = idx
             break
-
     day_num = None
     m = re.search(r'\b(\d{1,2})\s+(янв|фев|мар|апр|ма|июн|июл|авг|сен|окт|ноя|дек)', t)
     if m:
@@ -122,8 +56,51 @@ def parse_header_date(txt):
         m2 = re.search(r'\b(\d{1,2})\.\d{2}', t)
         if m2:
             day_num = int(m2.group(1))
-
     return w_day, day_num
+
+def load_manual_changes():
+    """Считывает ручные правки из файла manual_changes.txt"""
+    manual = {}
+    if not os.path.exists("manual_changes.txt"):
+        return manual
+    try:
+        with open("manual_changes.txt", "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                m = re.match(r'^(\d+)\s*[:\-]\s*(.*)$', line)
+                if m:
+                    num = int(m.group(1))
+                    val = m.group(2).strip()
+                    is_canc = "СНЯТ" in val.upper() or "НЕТ" in val.upper()
+                    room = ""
+                    room_m = re.search(r'\((?:каб\.?\s*)?([^)]+)\)', val)
+                    if room_m:
+                        room = room_m.group(1).strip()
+                        sub = re.sub(r'\(.*?\)', '', val).strip()
+                    else:
+                        sub = val
+                    manual[num] = (clean_subj(sub), room, is_canc)
+    except Exception as e:
+        print("Ошибка чтения manual_changes.txt:", e)
+    return manual
+
+def delete_old_telegram_message():
+    """Удаляет предыдущее сообщение бота из темы, чтобы не дублировать"""
+    token = os.getenv("BOT_TOKEN")
+    chat_id = os.getenv("CHAT_ID") or "-1002391481594"
+    if not os.path.exists("last_message_id.txt") or not token:
+        return
+    try:
+        with open("last_message_id.txt", "r", encoding="utf-8") as f:
+            old_id = f.read().strip()
+        if old_id:
+            url = f"https://api.telegram.org/bot{token}/deleteMessage"
+            requests.post(url, json={"chat_id": chat_id, "message_id": int(old_id)}, timeout=6)
+            print(f"🗑️ Предыдущее устаревшее сообщение #{old_id} удалено.")
+    except Exception as e:
+        print("Не удалось удалить старое сообщение:", e)
 
 def send_telegram_alert(message):
     token = os.getenv("BOT_TOKEN")
@@ -133,6 +110,9 @@ def send_telegram_alert(message):
     if not token:
         print("⚠️ Ошибка: BOT_TOKEN не задан")
         return False
+
+    # Сначала удаляем прошлое сообщение
+    delete_old_telegram_message()
 
     try:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -145,7 +125,13 @@ def send_telegram_alert(message):
         }
         res = requests.post(url, json=payload, timeout=12)
         print("Ответ Telegram:", res.status_code, res.text)
-        return res.status_code == 200
+        if res.status_code == 200:
+            msg_id = res.json().get("result", {}).get("message_id")
+            if msg_id:
+                with open("last_message_id.txt", "w", encoding="utf-8") as f:
+                    f.write(str(msg_id))
+            return True
+        return False
     except Exception as e:
         print("Ошибка отправки в Telegram:", e)
         return False
@@ -165,16 +151,13 @@ def main():
     next_num = next_dt.day
     next_wday = next_dt.weekday()
 
-    # ЕСЛИ ВРЕМЯ ПОСЛЕ 14:00 — ЦЕЛЕВОЙ ДЕНЬ ВСЕГДА ЗАВТРА!
     if now_msk.hour >= 14 or today_wday in (5, 6):
         target_wday = next_wday
         target_num = next_num
-        target_dt = next_dt
         target_title = f"{DAYS_RU[next_wday]} ({next_num} {MONTHS_RU[next_dt.month]})"
     else:
         target_wday = today_wday
         target_num = today_num
-        target_dt = now_msk
         target_title = f"{DAYS_RU[today_wday]} ({today_num} {MONTHS_RU[now_msk.month]})"
 
     print(f"🔍 Запуск парсера... Время (МСК): {now_msk.strftime('%d.%m %H:%M')}")
@@ -259,10 +242,16 @@ def main():
                 day_changes.update(ch)
                 break
 
+    # Накладываем ваши ручные правки (они имеют наивысший приоритет!)
+    manual = load_manual_changes()
+    if manual:
+        print(f"✏️ Применены ручные правки: {manual}")
+        day_changes.update(manual)
+
     base = BASE_SCHEDULE_10A.get(target_wday, {}).copy()
 
     print(f"📊 Выбран целевой день: {target_title}")
-    print(f"⚡ Найдено замен для 10А на этот день: {len(day_changes)}")
+    print(f"⚡ Итого замен для 10А: {len(day_changes)}")
 
     # 1. Запись для виджета на телефон / ПК
     widget_lines = [f"10А • {target_title}"]
@@ -312,7 +301,7 @@ def main():
 
     tg_lines.append("\n🌐 <a href=\"https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya\">Сайт лицея</a> • 📱 <a href=\"https://raw.githubusercontent.com/TYTANpr/school-widget/main/today_10a.txt\">Виджет</a>")
 
-    # 3. Умная отправка с защитой от сбоев
+    # 3. Умная отправка с удалением старого
     current_sig = f"{target_title}_{sorted(day_changes.items())}"
     last_sig = ""
     if os.path.exists("last_changes_10a.txt"):
@@ -320,14 +309,13 @@ def main():
             last_sig = f.read().strip()
 
     if current_sig != last_sig:
-        print(f"📨 Отправка в Telegram для {target_title}...")
+        print(f"📨 Отправка обновленного расписания для {target_title}...")
         success = send_telegram_alert("\n".join(tg_lines))
-        # Запоминаем факт отправки ТОЛЬКО если Telegram вернул 200 OK:
         if success:
             with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
                 f.write(current_sig)
     else:
-        print(f"ℹ️ Для {target_title} расписание уже отправлено. Пропуск дубликата.")
+        print(f"ℹ️ Для {target_title} расписание уже актуально.")
 
 if __name__ == "__main__":
     main()
