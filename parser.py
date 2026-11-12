@@ -38,16 +38,15 @@ SHORT_NAMES = {
     "русский язык": "Рус. яз",
 }
 
-
 def clean_subj(name):
-  """Сокращает длинные названия предметов, чтобы они не переносились на 2 строки"""
-  if not name:
-    return ""
-  low = name.strip().lower()
-  for k, v in SHORT_NAMES.items():
-    if k in low:
-      return v
-  return name.strip()
+    """Сокращает длинные названия предметов, чтобы они не переносились на 2 строки"""
+    if not name:
+        return ""
+    low = name.strip().lower()
+    for k, v in SHORT_NAMES.items():
+        if k in low:
+            return v
+    return name.strip()
 
 BASE_SCHEDULE_10A = {
     0: {
@@ -194,7 +193,6 @@ def main():
             txt = el.get_text(" ", strip=True)
             txt_upper = txt.upper()
 
-            # Дата может быть в любом месте (до или после слова обучающиеся)
             w, d = parse_header_date(txt)
             if (w is not None or d is not None) and len(txt) < 250:
                 current_key = (w, d)
@@ -215,11 +213,9 @@ def main():
             if len(cells) < 2:
                 continue
 
-            # Исключаем учителей
             if re.search(r'[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.', cells[0]):
                 continue
 
-            # Ищем 10А в первой или второй ячейке
             is_10a = False
             class_cell = ""
             for c in cells[:2]:
@@ -252,13 +248,11 @@ def main():
     except Exception as e:
         print(f"Ошибка загрузки сайта: {e}")
 
-    # Собираем замены для целевого дня (ЧЕТВЕРГ)
     day_changes = {}
     for (w, d), ch in changes_by_day.items():
         if (d is not None and d == target_num) or (d is None and w is not None and w == target_wday):
             day_changes.update(ch)
 
-    # Если точной даты не было, но на сайте найдены замены для этого дня недели
     if not day_changes:
         for (w, d), ch in changes_by_day.items():
             if w == target_wday and ch:
@@ -277,10 +271,12 @@ def main():
     for num in all_nums:
         if num in day_changes:
             sub, room, cancelled = day_changes[num]
+            sub = clean_subj(sub)
             r = f" ({room})" if room else ""
             widget_lines.append(f"{num} ур: ❌ {sub}" if cancelled else f"{num} ур: ⚡ {sub}{r} [ИЗМ]")
         elif num in base:
             sub, room = base[num]
+            sub = clean_subj(sub)
             r = f" ({room})" if room else ""
             widget_lines.append(f"{num} ур: {sub}{r}")
 
@@ -298,8 +294,9 @@ def main():
     for num in all_nums:
         if num in day_changes:
             sub, room, cancelled = day_changes[num]
-            r = f" (каб. {room})" if room else ""
-            old_subj = base.get(num, ("", ""))[0]
+            sub = clean_subj(sub)
+            r = f" ({room})" if room else ""
+            old_subj = clean_subj(base.get(num, ("", ""))[0])
 
             if cancelled:
                 old_info = f" <s>{old_subj}</s>" if old_subj else ""
@@ -309,13 +306,13 @@ def main():
                 tg_lines.append(f"<blockquote>⚡ <b>{num} урок: {sub}{r}</b>{old_info}</blockquote>")
         elif num in base:
             sub, room = base[num]
+            sub = clean_subj(sub)
             r = f" (каб. {room})" if room else ""
             tg_lines.append(f"🔹 {num} ур: {sub}{r}")
 
     tg_lines.append("\n🌐 <a href=\"https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya\">Сайт лицея</a> • 📱 <a href=\"https://raw.githubusercontent.com/TYTANpr/school-widget/main/today_10a.txt\">Виджет</a>")
 
-    # 3. Умная отправка: присылает сообщение РОВНО 1 РАЗ на каждый новый день
-    # Если замен нет — напишет "Изменений нет". Если позже завуч добавит замену — пришлёт обновление!
+    # 3. Умная отправка с защитой от сбоев
     current_sig = f"{target_title}_{sorted(day_changes.items())}"
     last_sig = ""
     if os.path.exists("last_changes_10a.txt"):
@@ -324,12 +321,13 @@ def main():
 
     if current_sig != last_sig:
         print(f"📨 Отправка в Telegram для {target_title}...")
-        send_telegram_alert("\n".join(tg_lines))
+        success = send_telegram_alert("\n".join(tg_lines))
+        # Запоминаем факт отправки ТОЛЬКО если Telegram вернул 200 OK:
+        if success:
+            with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
+                f.write(current_sig)
     else:
         print(f"ℹ️ Для {target_title} расписание уже отправлено. Пропуск дубликата.")
-
-    with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
-        f.write(current_sig)
 
 if __name__ == "__main__":
     main()
