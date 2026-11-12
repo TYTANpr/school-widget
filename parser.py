@@ -58,32 +58,92 @@ def parse_header_date(txt):
             day_num = int(m2.group(1))
     return w_day, day_num
 
-def load_manual_changes():
-    """Считывает ручные правки из файла manual_changes.txt"""
+def load_manual_changes(target_dt, now_msk):
+    """Считывает ручные правки для конкретной даты target_dt и очищает прошедшие даты."""
     manual = {}
     if not os.path.exists("manual_changes.txt"):
         return manual
+
+    target_day = target_dt.day
+    target_month = target_dt.month
+    today_day = now_msk.day
+    today_month = now_msk.month
+
+    active_for_target = False
+    cleaned_lines = []
+    current_block_expired = False
+    file_was_changed = False
+
     try:
         with open("manual_changes.txt", "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                m = re.match(r'^(\d+)\s*[:\-]\s*(.*)$', line)
+            lines = f.readlines()
+
+        for line in lines:
+            stripped = line.strip()
+
+            # Ищем заголовок даты, например: [13.11], [13.11.2026] или [пятница]
+            header_m = re.match(r"^\[(.*?)\]", stripped)
+            if header_m:
+                h_txt = header_m.group(1).strip().lower()
+                active_for_target = False
+                current_block_expired = False
+
+                # Пытаемся распознать день и месяц (например: 13.11)
+                date_m = re.search(r"(\d{1,2})\.(\d{1,2})", h_txt)
+                if date_m:
+                    d_num = int(date_m.group(1))
+                    m_num = int(date_m.group(2))
+
+                    # Проверяем, не в прошлом ли эта дата
+                    if (m_num < today_month) or (
+                        m_num == today_month and d_num < today_day
+                    ):
+                        current_block_expired = True
+                        file_was_changed = True
+                        continue
+
+                    if d_num == target_day and m_num == target_month:
+                        active_for_target = True
+                else:
+                    # Если написали день недели словами, например [пятница]
+                    w, _ = parse_header_date(h_txt)
+                    if w is not None and w == target_dt.weekday():
+                        active_for_target = True
+
+                cleaned_lines.append(line)
+                continue
+
+            # Если блок устарел (прошедший день) — не сохраняем его в файл
+            if current_block_expired:
+                continue
+
+            cleaned_lines.append(line)
+
+            # Если блок совпал с нашим целевым днём — читаем уроки
+            if active_for_target and stripped and not stripped.startswith("#"):
+                m = re.match(r"^(\d+)\s*[:\-]\s*(.*)$", stripped)
                 if m:
                     num = int(m.group(1))
                     val = m.group(2).strip()
                     is_canc = "СНЯТ" in val.upper() or "НЕТ" in val.upper()
                     room = ""
-                    room_m = re.search(r'\((?:каб\.?\s*)?([^)]+)\)', val)
+                    room_m = re.search(r"\((?:каб\.?\s*)?([^)]+)\)", val)
                     if room_m:
                         room = room_m.group(1).strip()
-                        sub = re.sub(r'\(.*?\)', '', val).strip()
+                        sub = re.sub(r"\(.*?\)", "", val).strip()
                     else:
                         sub = val
                     manual[num] = (clean_subj(sub), room, is_canc)
+
+        # Перезаписываем файл, удаляя старые прошедшие даты
+        if file_was_changed:
+            with open("manual_changes.txt", "w", encoding="utf-8") as f:
+                f.writelines(cleaned_lines)
+            print("🧹 Прошедшие даты автоматически удалены из manual_changes.txt")
+
     except Exception as e:
         print("Ошибка чтения manual_changes.txt:", e)
+
     return manual
 
 def delete_old_telegram_message():
