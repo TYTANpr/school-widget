@@ -58,11 +58,16 @@ def parse_header_date(txt):
             day_num = int(m2.group(1))
     return w_day, day_num
 
-def load_manual_changes(target_dt, now_msk):
+def load_manual_changes(target_dt=None, now_msk=None):
     """Считывает ручные правки для конкретной даты target_dt и очищает прошедшие даты."""
     manual = {}
     if not os.path.exists("manual_changes.txt"):
         return manual
+
+    if now_msk is None:
+        now_msk = datetime.utcnow() + timedelta(hours=3)
+    if target_dt is None:
+        target_dt = now_msk
 
     target_day = target_dt.day
     target_month = target_dt.month
@@ -81,20 +86,17 @@ def load_manual_changes(target_dt, now_msk):
         for line in lines:
             stripped = line.strip()
 
-            # Ищем заголовок даты, например: [13.11], [13.11.2026] или [пятница]
             header_m = re.match(r"^\[(.*?)\]", stripped)
             if header_m:
                 h_txt = header_m.group(1).strip().lower()
                 active_for_target = False
                 current_block_expired = False
 
-                # Пытаемся распознать день и месяц (например: 13.11)
                 date_m = re.search(r"(\d{1,2})\.(\d{1,2})", h_txt)
                 if date_m:
                     d_num = int(date_m.group(1))
                     m_num = int(date_m.group(2))
 
-                    # Проверяем, не в прошлом ли эта дата
                     if (m_num < today_month) or (
                         m_num == today_month and d_num < today_day
                     ):
@@ -105,7 +107,6 @@ def load_manual_changes(target_dt, now_msk):
                     if d_num == target_day and m_num == target_month:
                         active_for_target = True
                 else:
-                    # Если написали день недели словами, например [пятница]
                     w, _ = parse_header_date(h_txt)
                     if w is not None and w == target_dt.weekday():
                         active_for_target = True
@@ -113,13 +114,11 @@ def load_manual_changes(target_dt, now_msk):
                 cleaned_lines.append(line)
                 continue
 
-            # Если блок устарел (прошедший день) — не сохраняем его в файл
             if current_block_expired:
                 continue
 
             cleaned_lines.append(line)
 
-            # Если блок совпал с нашим целевым днём — читаем уроки
             if active_for_target and stripped and not stripped.startswith("#"):
                 m = re.match(r"^(\d+)\s*[:\-]\s*(.*)$", stripped)
                 if m:
@@ -135,7 +134,6 @@ def load_manual_changes(target_dt, now_msk):
                         sub = val
                     manual[num] = (clean_subj(sub), room, is_canc)
 
-        # Перезаписываем файл, удаляя старые прошедшие даты
         if file_was_changed:
             with open("manual_changes.txt", "w", encoding="utf-8") as f:
                 f.writelines(cleaned_lines)
@@ -171,7 +169,6 @@ def send_telegram_alert(message):
         print("⚠️ Ошибка: BOT_TOKEN не задан")
         return False
 
-    # Сначала удаляем прошлое сообщение
     delete_old_telegram_message()
 
     try:
@@ -214,10 +211,12 @@ def main():
     if now_msk.hour >= 14 or today_wday in (5, 6):
         target_wday = next_wday
         target_num = next_num
+        target_dt = next_dt
         target_title = f"{DAYS_RU[next_wday]} ({next_num} {MONTHS_RU[next_dt.month]})"
     else:
         target_wday = today_wday
         target_num = today_num
+        target_dt = now_msk
         target_title = f"{DAYS_RU[today_wday]} ({today_num} {MONTHS_RU[now_msk.month]})"
 
     print(f"🔍 Запуск парсера... Время (МСК): {now_msk.strftime('%d.%m %H:%M')}")
@@ -302,8 +301,8 @@ def main():
                 day_changes.update(ch)
                 break
 
-    # Накладываем ваши ручные правки (они имеют наивысший приоритет!)
-    manual = load_manual_changes()
+    # Накладываем ваши ручные правки (передаём target_dt и now_msk)
+    manual = load_manual_changes(target_dt, now_msk)
     if manual:
         print(f"✏️ Применены ручные правки: {manual}")
         day_changes.update(manual)
