@@ -59,7 +59,6 @@ def parse_header_date(txt):
     return w_day, day_num
 
 def load_manual_changes(target_dt=None, now_msk=None):
-    """Считывает ручные правки для конкретной даты target_dt и очищает прошедшие даты."""
     manual = {}
     if not os.path.exists("manual_changes.txt"):
         return manual
@@ -145,7 +144,6 @@ def load_manual_changes(target_dt=None, now_msk=None):
     return manual
 
 def delete_old_telegram_message(target_date_key):
-    """Удаляет предыдущее сообщение бота ТОЛЬКО если оно относится к тому же самому целевому дню."""
     token = os.getenv("BOT_TOKEN")
     chat_id = os.getenv("CHAT_ID") or "-1002391481594"
     if not os.path.exists("last_message_id.txt") or not token:
@@ -156,13 +154,11 @@ def delete_old_telegram_message(target_date_key):
         if not content:
             return
 
-        # Формат хранения: "ГГГГ-ММ-ДД:MESSAGE_ID"
         if ":" in content:
             saved_date, old_id = content.split(":", 1)
         else:
             saved_date, old_id = "", content
 
-        # Удаляем ТОЛЬКО если дата совпадает (тот же день)
         if saved_date == target_date_key and old_id.isdigit():
             url = f"https://api.telegram.org/bot{token}/deleteMessage"
             requests.post(url, json={"chat_id": chat_id, "message_id": int(old_id)}, timeout=6)
@@ -172,7 +168,7 @@ def delete_old_telegram_message(target_date_key):
     except Exception as e:
         print("Не удалось удалить старое сообщение:", e)
 
-def send_telegram_alert(message):
+def send_telegram_alert(message, target_date_key):
     token = os.getenv("BOT_TOKEN")
     chat_id = os.getenv("CHAT_ID") or "-1002391481594"
     topic_id = int(os.getenv("TOPIC_ID", "21"))
@@ -181,7 +177,7 @@ def send_telegram_alert(message):
         print("⚠️ Ошибка: BOT_TOKEN не задан")
         return False
 
-    delete_old_telegram_message()
+    delete_old_telegram_message(target_date_key)
 
     try:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -198,7 +194,7 @@ def send_telegram_alert(message):
             msg_id = res.json().get("result", {}).get("message_id")
             if msg_id:
                 with open("last_message_id.txt", "w", encoding="utf-8") as f:
-                    f.write(str(msg_id))
+                    f.write(f"{target_date_key}:{msg_id}")
             return True
         return False
     except Exception as e:
@@ -313,7 +309,6 @@ def main():
                 day_changes.update(ch)
                 break
 
-    # Накладываем ваши ручные правки (передаём target_dt и now_msk)
     manual = load_manual_changes(target_dt, now_msk)
     if manual:
         print(f"✏️ Применены ручные правки: {manual}")
@@ -324,7 +319,6 @@ def main():
     print(f"📊 Выбран целевой день: {target_title}")
     print(f"⚡ Итого замен для 10А: {len(day_changes)}")
 
-    # 1. Запись для виджета на телефон / ПК
     widget_lines = [f"10А • {target_title}"]
     all_nums = sorted(set(list(base.keys()) + list(day_changes.keys())))
 
@@ -343,7 +337,6 @@ def main():
     with open("today_10a.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(widget_lines))
 
-    # 2. Формирование сообщения для Telegram
     if day_changes:
         tg_header = f"🔔 <b>ИЗМЕНЕНИЯ В РАСПИСАНИИ (10А)</b>\n📅 <b>{target_title}</b>\n"
     else:
@@ -372,7 +365,6 @@ def main():
 
     tg_lines.append("\n🌐 <a href=\"https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya\">Сайт лицея</a> • 📱 <a href=\"https://raw.githubusercontent.com/TYTANpr/school-widget/main/today_10a.txt\">Виджет</a>")
 
-    # 3. Умная отправка с удалением старого
     current_sig = f"{target_title}_{sorted(day_changes.items())}"
     last_sig = ""
     if os.path.exists("last_changes_10a.txt"):
@@ -382,7 +374,7 @@ def main():
     if current_sig != last_sig:
         print(f"📨 Отправка обновленного расписания для {target_title}...")
         target_date_key = target_dt.strftime("%Y-%m-%d")
-    success = send_telegram_alert("\n".join(tg_lines), target_date_key)
+        success = send_telegram_alert("\n".join(tg_lines), target_date_key)
         if success:
             with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
                 f.write(current_sig)
