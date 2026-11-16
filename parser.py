@@ -381,7 +381,8 @@ def main():
 
     if current_sig != last_sig:
         print(f"📨 Отправка обновленного расписания для {target_title}...")
-        success = send_telegram_alert("\n".join(tg_lines))
+        target_date_key = target_dt.strftime("%Y-%m-%d")
+    success = send_telegram_alert("\n".join(tg_lines), target_date_key)
         if success:
             with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
                 f.write(current_sig)
