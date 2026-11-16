@@ -1,15 +1,15 @@
 name: Update Schedule
 
 on:
-  schedule:
-    - cron: '*/15 10-18 * * *'
-
-    - cron: '*/15 4-5 * * 1-6'
-
   workflow_dispatch:
 
 permissions:
   contents: write
+
+# Запрещаем одновременный запуск двух копий (защита от конфликта файлов)
+concurrency:
+  group: schedule-updater
+  cancel-in-progress: false
 
 jobs:
   run-parser:
@@ -41,5 +41,10 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Auto update schedules 10A & 7B" || echo "Нет новых изменений"
-          git push || echo "Нечего отправлять"
+          if ! git diff --staged --quiet; then
+            git commit -m "Auto update schedules 10A & 7B"
+            git pull --rebase origin main
+            git push
+          else
+            echo "Нет новых изменений"
+          fi
