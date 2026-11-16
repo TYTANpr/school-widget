@@ -144,19 +144,31 @@ def load_manual_changes(target_dt=None, now_msk=None):
 
     return manual
 
-def delete_old_telegram_message():
-    """Удаляет предыдущее сообщение бота из темы, чтобы не дублировать"""
+def delete_old_telegram_message(target_date_key):
+    """Удаляет предыдущее сообщение бота ТОЛЬКО если оно относится к тому же самому целевому дню."""
     token = os.getenv("BOT_TOKEN")
     chat_id = os.getenv("CHAT_ID") or "-1002391481594"
     if not os.path.exists("last_message_id.txt") or not token:
         return
     try:
         with open("last_message_id.txt", "r", encoding="utf-8") as f:
-            old_id = f.read().strip()
-        if old_id:
+            content = f.read().strip()
+        if not content:
+            return
+
+        # Формат хранения: "ГГГГ-ММ-ДД:MESSAGE_ID"
+        if ":" in content:
+            saved_date, old_id = content.split(":", 1)
+        else:
+            saved_date, old_id = "", content
+
+        # Удаляем ТОЛЬКО если дата совпадает (тот же день)
+        if saved_date == target_date_key and old_id.isdigit():
             url = f"https://api.telegram.org/bot{token}/deleteMessage"
             requests.post(url, json={"chat_id": chat_id, "message_id": int(old_id)}, timeout=6)
-            print(f"🗑️ Предыдущее устаревшее сообщение #{old_id} удалено.")
+            print(f"🗑️ Предыдущее сообщение #{old_id} за этот же день ({target_date_key}) удалено.")
+        else:
+            print(f"🗓️ Новый день ({target_date_key})! Предыдущее сообщение #{old_id} оставлено в истории чата.")
     except Exception as e:
         print("Не удалось удалить старое сообщение:", e)
 
