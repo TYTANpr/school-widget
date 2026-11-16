@@ -2,7 +2,7 @@ name: Update Schedule
 
 on:
   schedule:
-    - cron: '*/15 11-18 * * *'
+    - cron: '*/15 10-18 * * *'
 
     - cron: '*/15 4-5 * * 1-6'
 
