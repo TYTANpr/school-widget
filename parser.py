@@ -236,7 +236,13 @@ def main():
 
     try:
         res = requests.get(URL, headers=HEADERS, timeout=20)
+        res.raise_for_status()
         res.encoding = 'utf-8'
+
+        if "ОБУЧАЮЩИЕСЯ" not in res.text.upper() and "РАСПИСАНИЯ" not in res.text.upper():
+            print("⚠️ Сайт вернул неполную страницу или тех. работы. Отмена проверки.")
+            return
+
         soup = BeautifulSoup(res.text, "html.parser")
 
         for el in soup.find_all(['h1', 'h2', 'h3', 'h4', 'p', 'div', 'b', 'strong', 'tr']):
@@ -296,7 +302,8 @@ def main():
                             changes_by_day[current_key] = {}
                         changes_by_day[current_key][int(digit)] = ("УРОК СНЯТ", "", True)
     except Exception as e:
-        print(f"Ошибка загрузки сайта: {e}")
+        print(f"❌ Ошибка загрузки сайта (пропускаем проверку, ничего не меняем): {e}")
+        return
 
     day_changes = {}
     for (w, d), ch in changes_by_day.items():
