@@ -198,37 +198,48 @@ def delete_old_telegram_message(target_date_key):
         print("Не удалось удалить старое сообщение:", e)
 
 def send_telegram_alert(message, target_date_key):
-    token = os.getenv("BOT_TOKEN")
-    chat_id = os.getenv("CHAT_ID") or "-1002391481594"
-    topic_id = int(os.getenv("TOPIC_ID", "21"))
+  token = os.getenv("BOT_TOKEN")
+  chat_id = os.getenv("CHAT_ID") or "-1002391481594"
+  debug_mode = os.getenv("DEBUG_MODE") == "true"
 
-    if not token:
-        print("⚠️ Ошибка: BOT_TOKEN не задан")
-        return False
+  topic_env = os.getenv("TOPIC_ID", "21").strip()
+  topic_id = (
+      int(topic_env) if (topic_env.isdigit() and int(topic_env) > 0) else None
+  )
 
+  if not token:
+    print("⚠️ Ошибка: BOT_TOKEN не задан")
+    return False
+
+  # В режиме отладки не удаляем сообщения!
+  if not debug_mode:
     delete_old_telegram_message(target_date_key)
 
-    try:
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        payload = {
-            "chat_id": chat_id,
-            "message_thread_id": topic_id,
-            "text": message,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True
-        }
-        res = requests.post(url, json=payload, timeout=12)
-        print("Ответ Telegram:", res.status_code, res.text)
-        if res.status_code == 200:
-            msg_id = res.json().get("result", {}).get("message_id")
-            if msg_id:
-                with open("last_message_id.txt", "w", encoding="utf-8") as f:
-                    f.write(f"{target_date_key}:{msg_id}")
-            return True
-        return False
-    except Exception as e:
-        print("Ошибка отправки в Telegram:", e)
-        return False
+  try:
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": message,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    }
+    # В личке тем нет, поэтому передаём topic_id только в обычном (не отладочном) режиме
+    if topic_id and not debug_mode:
+      payload["message_thread_id"] = topic_id
+
+    res = requests.post(url, json=payload, timeout=12)
+    print("Ответ Telegram:", res.status_code, res.text)
+    if res.status_code == 200:
+      if not debug_mode:
+        msg_id = res.json().get("result", {}).get("message_id")
+        if msg_id:
+          with open("last_message_id.txt", "w", encoding="utf-8") as f:
+            f.write(f"{target_date_key}:{msg_id}")
+      return True
+    return False
+  except Exception as e:
+    print("Ошибка отправки в Telegram:", e)
+    return False
 
 def main():
     now_msk = datetime.utcnow() + timedelta(hours=3)
@@ -427,21 +438,28 @@ def main():
     tg_lines.append("\n🌐 <a href=\"https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya\">Сайт лицея</a> • 📱 <a href=\"https://raw.githubusercontent.com/TYTANpr/school-widget/main/today_10a.txt\">Виджет</a>")
 
     # 3. Умная отправка
+    debug_mode = os.getenv("DEBUG_MODE") == "true"
+
     current_sig = f"{target_title}_{sorted(day_changes.items())}"
     last_sig = ""
     if os.path.exists("last_changes_10a.txt"):
-        with open("last_changes_10a.txt", "r", encoding="utf-8") as f:
-            last_sig = f.read().strip()
+      with open("last_changes_10a.txt", "r", encoding="utf-8") as f:
+        last_sig = f.read().strip()
 
-    if current_sig != last_sig:
-        print(f"📨 Отправка обновленного расписания для {target_title}...")
-        target_date_key = target_dt.strftime("%Y-%m-%d")
-        success = send_telegram_alert("\n".join(tg_lines), target_date_key)
-        if success:
-            with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
-                f.write(current_sig)
+    if debug_mode:
+      print("🧪 РЕЖИМ ОТЛАДКИ: принудительная отправка в личку...")
+      target_date_key = target_dt.strftime("%Y-%m-%d")
+      debug_text = "🧪 <b>[ОТЛАДКА]</b>\n\n" + "\n".join(tg_lines)
+      send_telegram_alert(debug_text, target_date_key)
+    elif current_sig != last_sig:
+      print(f"📨 Отправка обновленного расписания для {target_title}...")
+      target_date_key = target_dt.strftime("%Y-%m-%d")
+      success = send_telegram_alert("\n".join(tg_lines), target_date_key)
+      if success:
+        with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
+          f.write(current_sig)
     else:
-        print(f"ℹ️ Для {target_title} расписание уже актуально.")
+      print(f"ℹ️ Для {target_title} расписание уже актуально.")
 
 if __name__ == "__main__":
     main()
