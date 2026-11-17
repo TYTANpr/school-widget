@@ -202,7 +202,7 @@ def send_telegram_alert(message, target_date_key):
   chat_id = os.getenv("CHAT_ID") or "-1002391481594"
   debug_mode = os.getenv("DEBUG_MODE") == "true"
 
-  topic_env = os.getenv("TOPIC_ID").strip()
+  topic_env = os.getenv("TOPIC_ID", "9965").strip()
   topic_id = (
       int(topic_env) if (topic_env.isdigit() and int(topic_env) > 0) else None
   )
