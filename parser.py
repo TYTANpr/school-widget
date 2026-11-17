@@ -10,12 +10,6 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 DAYS_RU = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
 MONTHS_RU = ["", "января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
 
-DAY_MAP = {
-    "понедельник": 0, "пн": 0, "вторник": 1, "вт": 1,
-    "среда": 2, "ср": 2, "четверг": 3, "чт": 3,
-    "пятница": 4, "пт": 4, "суббота": 5, "сб": 5
-}
-
 SHORT_NAMES = {
     "обществознание": "Общ-ние", "английский язык": "Ин. яз", "англ. язык": "Ин. яз",
     "анг/анг": "Ин. яз", "английский": "Ин. яз", "раз-ры о важном": "Разг. о важном",
@@ -44,12 +38,19 @@ BASE_SCHEDULE_10A = {
 def parse_header_date(txt):
     t = txt.lower()
     w_day = None
-    for name, idx in DAY_MAP.items():
-        if re.search(r'\b' + name, t):
+    day_patterns = [
+        (r'\bпонедельник\w*', 0), (r'\bвторник\w*', 1), (r'\bсред[ауеы]\b', 2),
+        (r'\bчетверг\w*', 3), (r'\bпятниц[ауеы]\b', 4), (r'\bсуббот[ауеы]\b', 5),
+        (r'\bпн\b', 0), (r'\bвт\b', 1), (r'\bср\b', 2),
+        (r'\bчт\b', 3), (r'\bпт\b', 4), (r'\bсб\b', 5)
+    ]
+    for pattern, idx in day_patterns:
+        if re.search(pattern, t):
             w_day = idx
             break
+
     day_num = None
-    m = re.search(r'\b(\d{1,2})\s+(янв|фев|мар|апр|ма|июн|июл|авг|сен|окт|ноя|дек)', t)
+    m = re.search(r'\b(\d{1,2})\s+(янв|фев|мар|апр|ма[йя]|июн|июл|авг|сен|окт|ноя|дек)', t)
     if m:
         day_num = int(m.group(1))
     else:
@@ -57,6 +58,18 @@ def parse_header_date(txt):
         if m2:
             day_num = int(m2.group(1))
     return w_day, day_num
+
+def extract_lesson_nums(cell_text):
+    """Извлекает номера уроков: '1' -> [1], '1-2' -> [1, 2], '3, 4' -> [3, 4]"""
+    t = cell_text.strip()
+    m_range = re.match(r'^(\d{1,2})\s*[-–—]\s*(\d{1,2})(?:\s*ур\.?)?$', t, re.I)
+    if m_range:
+        start, end = int(m_range.group(1)), int(m_range.group(2))
+        if 0 <= start <= end <= 12:
+            return list(range(start, end + 1))
+    if re.match(r'^[\d\s,;ур\.]+$', t, re.I):
+        return [int(x) for x in re.findall(r'\d+', t) if 0 <= int(x) <= 12]
+    return []
 
 def load_manual_changes(target_dt=None, now_msk=None):
     manual = {}
@@ -96,9 +109,7 @@ def load_manual_changes(target_dt=None, now_msk=None):
                     d_num = int(date_m.group(1))
                     m_num = int(date_m.group(2))
 
-                    if (m_num < today_month) or (
-                        m_num == today_month and d_num < today_day
-                    ):
+                    if (m_num < today_month) or (m_num == today_month and d_num < today_day):
                         current_block_expired = True
                         file_was_changed = True
                         continue
@@ -239,28 +250,37 @@ def main():
         res.raise_for_status()
         res.encoding = 'utf-8'
 
-        if "ОБУЧАЮЩИЕСЯ" not in res.text.upper() and "РАСПИСАНИЯ" not in res.text.upper():
+        if "ОБУЧАЮЩ" not in res.text.upper() and "РАСПИСАНИ" not in res.text.upper():
             print("⚠️ Сайт вернул неполную страницу или тех. работы. Отмена проверки.")
             return
 
         soup = BeautifulSoup(res.text, "html.parser")
 
-        for el in soup.find_all(['h1', 'h2', 'h3', 'h4', 'p', 'div', 'b', 'strong', 'tr']):
+        for el in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'span', 'b', 'strong', 'em', 'font', 'caption', 'tr']):
+            # Игнорируем внешние обёртки, содержащие целые таблицы внутри
+            if el.name in ('div', 'p', 'span') and el.find('table'):
+                continue
+
             txt = el.get_text(" ", strip=True)
+            if not txt:
+                continue
             txt_upper = txt.upper()
 
-            w, d = parse_header_date(txt)
-            if (w is not None or d is not None) and len(txt) < 250:
-                current_key = (w, d)
-                if current_key not in changes_by_day:
-                    changes_by_day[current_key] = {}
-
-            if "ОБУЧАЮЩИЕСЯ" in txt_upper or "УЧАЩИЕСЯ" in txt_upper:
+            # Отслеживаем переключение секций
+            if ("ОБУЧАЮЩ" in txt_upper or "УЧАЩ" in txt_upper or "УЧЕНИК" in txt_upper) and len(txt) < 100:
                 is_students = True
-                continue
-            elif "ПЕДАГОГИ" in txt_upper and len(txt) < 30 and is_students:
+            elif ("ПЕДАГОГ" in txt_upper or "УЧИТЕЛ" in txt_upper) and len(txt) < 60:
                 is_students = False
                 continue
+
+            # Ловим дату блока
+            w, d = parse_header_date(txt)
+            if (w is not None or d is not None) and len(txt) < 250:
+                if "ОЛИМПИАД" not in txt_upper and "РЕГИСТРАЦ" not in txt_upper and "ИНСТРУКТАЖ" not in txt_upper:
+                    current_key = (w, d)
+                    if current_key not in changes_by_day:
+                        changes_by_day[current_key] = {}
+                        print(f"📅 Найдена дата на странице: '{txt[:60]}' -> {current_key}")
 
             if not is_students or el.name != 'tr':
                 continue
@@ -284,23 +304,32 @@ def main():
                 row_full = " ".join(cells).upper()
                 is_canc = "НЕТ" in row_full or "СНЯТ" in row_full or "ОТМЕН" in row_full
 
-                lesson_num = None
-                for c in cells:
-                    if c != class_cell and c.isdigit():
-                        lesson_num = int(c)
-                        break
+                # Ищем номера уроков (включая "1-2", "5, 6", "3 ур.")
+                lesson_nums = []
+                num_cell_idx = -1
+                for idx, c in enumerate(cells):
+                    if c != class_cell:
+                        extracted = extract_lesson_nums(c)
+                        if extracted:
+                            lesson_nums = extracted
+                            num_cell_idx = idx
+                            break
 
-                if lesson_num:
-                    sub = cells[2] if len(cells) > 2 and cells[1].isdigit() else (cells[1] if len(cells) > 1 else "")
-                    room = cells[3] if len(cells) > 3 else ""
+                if lesson_nums:
+                    sub_idx = num_cell_idx + 1 if num_cell_idx + 1 < len(cells) else 1
+                    sub = cells[sub_idx] if not is_canc else "УРОК СНЯТ"
+                    room = cells[sub_idx + 1] if sub_idx + 1 < len(cells) else ""
                     if current_key not in changes_by_day:
                         changes_by_day[current_key] = {}
-                    changes_by_day[current_key][lesson_num] = (sub, room, is_canc)
+                    for l_num in lesson_nums:
+                        changes_by_day[current_key][l_num] = (sub, room, is_canc)
                 elif is_canc:
                     for digit in re.findall(r'\d+', row_full):
-                        if current_key not in changes_by_day:
-                            changes_by_day[current_key] = {}
-                        changes_by_day[current_key][int(digit)] = ("УРОК СНЯТ", "", True)
+                        if int(digit) <= 12:
+                            if current_key not in changes_by_day:
+                                changes_by_day[current_key] = {}
+                            changes_by_day[current_key][int(digit)] = ("УРОК СНЯТ", "", True)
+
     except Exception as e:
         print(f"❌ Ошибка загрузки сайта (пропускаем проверку, ничего не меняем): {e}")
         return
