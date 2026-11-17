@@ -1,0 +1,10 @@
+[b][c=#FF60CDFF]10А • СР (18 ноября)[/c][/b]
+
+[b][c=#FF6CD4FF]1[/c][/b]  [c=#FFB0B0B0]102[/c]  [c=#FFFFFFFF]Алгебра[/c]
+[b][c=#FF6CD4FF]2[/c][/b]  [c=#FFB0B0B0]301[/c]  [c=#FFFFFFFF]Лит-ра[/c]
+[b][c=#FF6CD4FF]3[/c][/b]  [c=#FFB0B0B0]317[/c]  [c=#FFFFFFFF]Биология[/c]
+[b][c=#FF6CD4FF]4[/c][/b]  [c=#FFB0B0B0]307[/c]  [c=#FFFFFFFF]Рус. яз[/c]
+[b][c=#FFFFD54F]5  307  ⚡ Лит-ра[/c][/b]
+[b][c=#FFFFD54F]6  101  ⚡ Алгебра[/c][/b]
+[b][c=#FFFFD54F]7  101  ⚡ ВЗн[/c][/b]
+[b][c=#FFFF7B7B]9  ---  ❌ УРОК СНЯТ[/c][/b]
