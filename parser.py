@@ -60,7 +60,6 @@ def parse_header_date(txt):
     return w_day, day_num
 
 def extract_lesson_nums(cell_text):
-    """Извлекает номера уроков: '1' -> [1], '1-2' -> [1, 2], '3, 4' -> [3, 4]"""
     t = cell_text.strip()
     m_range = re.match(r'^(\d{1,2})\s*[-–—]\s*(\d{1,2})(?:\s*ур\.?)?$', t, re.I)
     if m_range:
@@ -97,7 +96,6 @@ def load_manual_changes(target_dt=None, now_msk=None):
 
         for line in lines:
             stripped = line.strip()
-
             header_m = re.match(r"^\[(.*?)\]", stripped)
             if header_m:
                 h_txt = header_m.group(1).strip().lower()
@@ -108,12 +106,10 @@ def load_manual_changes(target_dt=None, now_msk=None):
                 if date_m:
                     d_num = int(date_m.group(1))
                     m_num = int(date_m.group(2))
-
                     if (m_num < today_month) or (m_num == today_month and d_num < today_day):
                         current_block_expired = True
                         file_was_changed = True
                         continue
-
                     if d_num == target_day and m_num == target_month:
                         active_for_target = True
                 else:
@@ -126,7 +122,6 @@ def load_manual_changes(target_dt=None, now_msk=None):
 
             if current_block_expired:
                 continue
-
             cleaned_lines.append(line)
 
             if active_for_target and stripped and not stripped.startswith("#"):
@@ -148,7 +143,6 @@ def load_manual_changes(target_dt=None, now_msk=None):
             with open("manual_changes.txt", "w", encoding="utf-8") as f:
                 f.writelines(cleaned_lines)
             print("🧹 Прошедшие даты автоматически удалены из manual_changes.txt")
-
     except Exception as e:
         print("Ошибка чтения manual_changes.txt:", e)
 
@@ -164,7 +158,6 @@ def delete_old_telegram_message(target_date_key):
             content = f.read().strip()
         if not content:
             return
-
         if ":" in content:
             saved_date, old_id = content.split(":", 1)
         else:
@@ -256,8 +249,10 @@ def main():
 
         soup = BeautifulSoup(res.text, "html.parser")
 
+        for iframe in soup.find_all('iframe'):
+            print(f"ℹ️ Найден iframe на странице: {iframe.get('src')}")
+
         for el in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'span', 'b', 'strong', 'em', 'font', 'caption', 'tr']):
-            # Игнорируем внешние обёртки, содержащие целые таблицы внутри
             if el.name in ('div', 'p', 'span') and el.find('table'):
                 continue
 
@@ -266,11 +261,13 @@ def main():
                 continue
             txt_upper = txt.upper()
 
-            # Отслеживаем переключение секций
+            # Переключение секций (строго по заголовку ПЕДАГОГИ, без ложного срабатывания на "Учителя...")
             if ("ОБУЧАЮЩ" in txt_upper or "УЧАЩ" in txt_upper or "УЧЕНИК" in txt_upper) and len(txt) < 100:
                 is_students = True
-            elif ("ПЕДАГОГ" in txt_upper or "УЧИТЕЛ" in txt_upper) and len(txt) < 60:
+                print("👥 Переключение секции -> ОБУЧАЮЩИЕСЯ")
+            elif txt_upper.strip(" :") == "ПЕДАГОГИ":
                 is_students = False
+                print("👩‍🏫 Переключение секции -> ПЕДАГОГИ")
                 continue
 
             # Ловим дату блока
@@ -280,9 +277,9 @@ def main():
                     current_key = (w, d)
                     if current_key not in changes_by_day:
                         changes_by_day[current_key] = {}
-                        print(f"📅 Найдена дата на странице: '{txt[:60]}' -> {current_key}")
+                    print(f"📅 Найдена дата: '{txt[:65]}' -> {current_key}")
 
-            if not is_students or el.name != 'tr':
+            if el.name != 'tr':
                 continue
 
             cells = [re.sub(r'\s+', ' ', td.get_text(strip=True)) for td in el.find_all(['td', 'th'])]
@@ -290,6 +287,12 @@ def main():
                 continue
 
             if re.search(r'[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.', cells[0]):
+                continue
+
+            # Если в первой ячейке чётко стоит "10а" — это строка учеников, берём даже если заголовок секции пропущен!
+            starts_with_10a = bool(re.match(r'^10\s*[-–—/]?\s*[аa](?:\b|[^а-яa-z])', cells[0].strip(), re.IGNORECASE))
+
+            if not is_students and not starts_with_10a:
                 continue
 
             is_10a = False
@@ -301,10 +304,10 @@ def main():
                     break
 
             if is_10a:
+                print(f"🔎 Найдена строка 10А под датой {current_key}: {cells}")
                 row_full = " ".join(cells).upper()
                 is_canc = "НЕТ" in row_full or "СНЯТ" in row_full or "ОТМЕН" in row_full
 
-                # Ищем номера уроков (включая "1-2", "5, 6", "3 ур.")
                 lesson_nums = []
                 num_cell_idx = -1
                 for idx, c in enumerate(cells):
