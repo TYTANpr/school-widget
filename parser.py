@@ -467,32 +467,53 @@ def main():
     with open("today_10a.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(widget_lines))
 
-    # 1.5 Запись цветного файла специально для KWGT на Android
-    kwgt_lines = [f"[b][c=#60CDFF]10А • {target_title}[/c][/b]\n"]
+    # 1.5 Раздельная генерация (Кабинет СЛЕВА возле предмета, комментарий СПРАВА)
+    kwgt_left = [f"[b][c=#FF60CDFF]10А • {target_title}[/c][/b]\n"]
+    kwgt_right = ["[b] [/b]\n"]  # Пустая строка под заголовок
+
     for num in all_nums:
       if num in day_changes:
-        sub, room, cancelled = day_changes[num]
+        sub, room_raw, cancelled = day_changes[num]
         sub = clean_subj(sub)
-        r_disp = room if room else "---"
-        if cancelled:
-          kwgt_lines.append(
-              f"[b][c=#FF7B7B]{num}  |  ---  |  ❌ {sub}[/c][/b]"
-          )
+
+        # Отделяем номер кабинета от комментария (например, "307, за ЧТ" -> "307" и "за ЧТ")
+        if "," in room_raw:
+          r_only, comm_only = [p.strip() for p in room_raw.split(",", 1)]
+        elif re.search(r"\bза\b", room_raw.lower()):
+          r_only, comm_only = "---", room_raw.strip()
         else:
-          kwgt_lines.append(
-              f"[b][c=#FFD54F]{num}  |  {r_disp}  |  ⚡ {sub}[/c][/b]"
+          r_only, comm_only = (room_raw if room_raw else "---"), ""
+
+        if cancelled:
+          kwgt_left.append(f"[b][c=#FFFF7B7B]{num}  ---  ❌ {sub}[/c][/b]")
+          kwgt_right.append("[b] [/b]")
+        else:
+          kwgt_left.append(
+              f"[b][c=#FFFFD54F]{num}  {r_only}  ⚡ {sub}[/c][/b]"
           )
+          if comm_only:
+            kwgt_right.append(f"[b][c=#FFFFE082]{comm_only}[/c][/b]")
+          else:
+            kwgt_right.append("[b] [/b]")
       elif num in base:
         sub, room = base[num]
         sub = clean_subj(sub)
-        r_disp = room if room else "---"
-        kwgt_lines.append(
-            f"[c=#6CD4FF][b]{num}[/b][/c]  [c=#B0B0B0]{r_disp}[/c] "
-            f" [c=#FFFFFF]{sub}[/c]"
+        r_disp = (
+            room.replace("спорт.з./сп.зал", "Сп.зал")
+            if room
+            else "---"
         )
+        kwgt_left.append(
+            f"[b][c=#FF6CD4FF]{num}[/c][/b]  [c=#FFB0B0B0]{r_disp}[/c] "
+            f" [c=#FFFFFFFF]{sub}[/c]"
+        )
+        kwgt_right.append("[b] [/b]")
 
-    with open("kwgt_10a.txt", "w", encoding="utf-8") as f:
-      f.write("\n".join(kwgt_lines))
+    with open("kwgt_10a_left.txt", "w", encoding="utf-8") as f:
+      f.write("\n".join(kwgt_left))
+
+    with open("kwgt_10a_right.txt", "w", encoding="utf-8") as f:
+      f.write("\n".join(kwgt_right))
 
     # 2. Сообщение для Telegram (ваша сокращённая шапка!)
     if day_changes:
