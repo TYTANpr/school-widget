@@ -23,11 +23,17 @@ SHORT_NAMES = {
 }
 
 def clean_subj(name):
-    if not name: return ""
-    low = name.strip().lower()
-    for k, v in SHORT_NAMES.items():
-        if k in low: return v
-    return name.strip()
+  if not name:
+    return ""
+  t = name.strip()
+  low = t.lower()
+  for k, v in SHORT_NAMES.items():
+    if k in low:
+      return v
+  # Если с сайта пришло с маленькой буквы ("алгебра") — делаем с заглавной
+  if t and t[0].islower():
+    return t[0].upper() + t[1:]
+  return t
 
 BASE_SCHEDULE_10A = {
     0: {
@@ -460,6 +466,33 @@ def main():
 
     with open("today_10a.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(widget_lines))
+
+    # 1.5 Запись цветного файла специально для KWGT на Android
+    kwgt_lines = [f"[b][c=#60CDFF]10А • {target_title}[/c][/b]\n"]
+    for num in all_nums:
+      if num in day_changes:
+        sub, room, cancelled = day_changes[num]
+        sub = clean_subj(sub)
+        r_disp = room if room else "---"
+        if cancelled:
+          kwgt_lines.append(
+              f"[b][c=#FF7B7B]{num}  |  ---  |  ❌ {sub}[/c][/b]"
+          )
+        else:
+          kwgt_lines.append(
+              f"[b][c=#FFD54F]{num}  |  {r_disp}  |  ⚡ {sub}[/c][/b]"
+          )
+      elif num in base:
+        sub, room = base[num]
+        sub = clean_subj(sub)
+        r_disp = room if room else "---"
+        kwgt_lines.append(
+            f"[c=#6CD4FF][b]{num}[/b][/c]  [c=#B0B0B0]{r_disp}[/c] "
+            f" [c=#FFFFFF]{sub}[/c]"
+        )
+
+    with open("kwgt_10a.txt", "w", encoding="utf-8") as f:
+      f.write("\n".join(kwgt_lines))
 
     # 2. Сообщение для Telegram (ваша сокращённая шапка!)
     if day_changes:
