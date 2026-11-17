@@ -441,7 +441,7 @@ def main():
 
     # 2. Формирование сообщения для Telegram
     if day_changes:
-        tg_header = f"🔔 <b>ИЗМЕНЕНИЯ В РАСПИСАНИИ (10А)</b>\n📅 <b>{target_title}</b>\n"
+        tg_header = f"🔔 <b>ИЗМЕНЕНИЯ (10А)</b>\n📅 <b>{target_title}</b>\n"
     else:
         tg_header = f"🟢 <b>РАСПИСАНИЕ (10А)</b>\n📅 <b>{target_title}</b>\n\n✅ <i>Изменений нет, уроки по обычному графику:</i>\n"
 
