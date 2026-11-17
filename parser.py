@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 URL = "https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
-# Стикер, который отправляется при 2 и более отменах уроков
+# Стикер при 2 и более отменах уроков
 STICKER_ID = "CAACAgIAAyEFAASOixz6AAIm82r8gHSgdnbqu4oIdj9rPvquxr4fAALTqgACsntRSgFMmIStpRd-PQQ"
 
 DAYS_RU = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
@@ -29,7 +29,6 @@ def clean_subj(name):
         if k in low: return v
     return name.strip()
 
-# Актуальное расписание 10А (с 8-9 уроками, сокращениями и вашими правками)
 BASE_SCHEDULE_10A = {
     0: {
         1: ("Разг. о важном", ""), 2: ("Геометрия", "306"), 3: ("Физика", "301"),
@@ -99,6 +98,7 @@ def extract_lesson_nums(cell_text):
     return []
 
 def load_manual_changes(target_dt=None, now_msk=None):
+    """Считывает ручные правки и безопасно очищает прошедшие даты (включая смену года)."""
     manual = {}
     if not os.path.exists("manual_changes.txt"):
         return manual
@@ -110,8 +110,7 @@ def load_manual_changes(target_dt=None, now_msk=None):
 
     target_day = target_dt.day
     target_month = target_dt.month
-    today_day = now_msk.day
-    today_month = now_msk.month
+    today_date = now_msk.date()
 
     active_for_target = False
     cleaned_lines = []
@@ -134,10 +133,23 @@ def load_manual_changes(target_dt=None, now_msk=None):
                 if date_m:
                     d_num = int(date_m.group(1))
                     m_num = int(date_m.group(2))
-                    if (m_num < today_month) or (m_num == today_month and d_num < today_day):
-                        current_block_expired = True
-                        file_was_changed = True
-                        continue
+
+                    # Учитываем переход через Новый год (декабрь <-> январь)
+                    entry_year = now_msk.year
+                    if now_msk.month == 1 and m_num == 12:
+                        entry_year -= 1
+                    elif now_msk.month == 12 and m_num == 1:
+                        entry_year += 1
+
+                    try:
+                        entry_date = datetime(entry_year, m_num, d_num).date()
+                        if entry_date < today_date:
+                            current_block_expired = True
+                            file_was_changed = True
+                            continue
+                    except ValueError:
+                        pass
+
                     if d_num == target_day and m_num == target_month:
                         active_for_target = True
                 else:
@@ -176,6 +188,10 @@ def load_manual_changes(target_dt=None, now_msk=None):
 
     return manual
 
+def is_quiet_time(now_msk):
+    """Тихий режим с 22:30 до 07:00 по МСК"""
+    return (now_msk.hour == 22 and now_msk.minute >= 30) or now_msk.hour >= 23 or now_msk.hour < 7
+
 def delete_old_telegram_message(target_date_key):
     token = os.getenv("BOT_TOKEN")
     chat_id = os.getenv("CHAT_ID") or "-1002391481594"
@@ -203,7 +219,7 @@ def delete_old_telegram_message(target_date_key):
     except Exception as e:
         print("Не удалось удалить старое сообщение:", e)
 
-def send_telegram_alert(message, target_date_key):
+def send_telegram_alert(message, target_date_key, silent=False):
     token = os.getenv("BOT_TOKEN")
     chat_id = os.getenv("CHAT_ID") or "-1002391481594"
     debug_mode = os.getenv("DEBUG_MODE") == "true"
@@ -224,7 +240,8 @@ def send_telegram_alert(message, target_date_key):
             "chat_id": chat_id,
             "text": message,
             "parse_mode": "HTML",
-            "disable_web_page_preview": True
+            "disable_web_page_preview": True,
+            "disable_notification": silent
         }
         if topic_id and not debug_mode:
             payload["message_thread_id"] = topic_id
@@ -243,7 +260,7 @@ def send_telegram_alert(message, target_date_key):
         print("Ошибка отправки в Telegram:", e)
         return False
 
-def send_telegram_sticker(sticker_id, target_date_key):
+def send_telegram_sticker(sticker_id, target_date_key, silent=False):
     if not sticker_id:
         return
     token = os.getenv("BOT_TOKEN")
@@ -257,7 +274,8 @@ def send_telegram_sticker(sticker_id, target_date_key):
         url = f"https://api.telegram.org/bot{token}/sendSticker"
         payload = {
             "chat_id": chat_id,
-            "sticker": sticker_id
+            "sticker": sticker_id,
+            "disable_notification": silent
         }
         if topic_id and not debug_mode:
             payload["message_thread_id"] = topic_id
@@ -304,6 +322,7 @@ def main():
     changes_by_day = {}
     current_key = (None, None)
     is_students = False
+    target_date_found_on_site = False
 
     try:
         res = requests.get(URL, headers=HEADERS, timeout=20)
@@ -340,6 +359,9 @@ def main():
                             current_key = (w, d)
                             if current_key not in changes_by_day:
                                 changes_by_day[current_key] = {}
+                            # Фиксируем, появилась ли на сайте сама дата целевого дня (даже в разделе педагогов)
+                            if (d is not None and d == target_num) or (d is None and w == target_wday):
+                                target_date_found_on_site = True
 
             if el.name != 'tr':
                 continue
@@ -417,7 +439,7 @@ def main():
 
     base = BASE_SCHEDULE_10A.get(target_wday, {}).copy()
 
-    print(f"📊 Выбран целевой день: {target_title}")
+    print(f"📊 Выбран целевой день: {target_title} | Дата на сайте: {target_date_found_on_site}")
     print(f"⚡ Итого замен для 10А: {len(day_changes)}")
 
     # 1. Запись для виджета
@@ -439,7 +461,7 @@ def main():
     with open("today_10a.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(widget_lines))
 
-    # 2. Формирование сообщения для Telegram
+    # 2. Сообщение для Telegram (ваша сокращённая шапка!)
     if day_changes:
         tg_header = f"🔔 <b>ИЗМЕНЕНИЯ (10А)</b>\n📅 <b>{target_title}</b>\n"
     else:
@@ -468,8 +490,9 @@ def main():
 
     tg_lines.append("\n🌐 <a href=\"https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya\">Сайт лицея</a>")
 
-    # 3. Отправка и прикол со стикером (если 2 и более отмены)
+    # 3. Умная отправка + ночной режим + стикер
     debug_mode = os.getenv("DEBUG_MODE") == "true"
+    silent = is_quiet_time(now_msk)
     cancelled_count = sum(1 for _, _, canc in day_changes.values() if canc)
 
     current_sig = f"{target_title}_{sorted(day_changes.items())}"
@@ -478,24 +501,29 @@ def main():
         with open("last_changes_10a.txt", "r", encoding="utf-8") as f:
             last_sig = f.read().strip()
 
+    # Условие публикации: есть замены, ИЛИ завуч уже выложил завтрашний день, ИЛИ наступил вечер 21:00+ (или утро)
+    should_notify = bool(day_changes) or target_date_found_on_site or now_msk.hour >= 21 or now_msk.hour < 14
+
     if debug_mode:
         print("🧪 РЕЖИМ ОТЛАДКИ: принудительная отправка в личку...")
         target_date_key = target_dt.strftime("%Y-%m-%d")
         debug_text = "🧪 <b>[ОТЛАДКА]</b>\n\n" + "\n".join(tg_lines)
-        if send_telegram_alert(debug_text, target_date_key):
+        if send_telegram_alert(debug_text, target_date_key, silent=False):
             if cancelled_count >= 2:
-                print(f"🎉 Отменено уроков: {cancelled_count}! Отправляем стикер!")
-                send_telegram_sticker(STICKER_ID, target_date_key)
+                send_telegram_sticker(STICKER_ID, target_date_key, silent=False)
     elif current_sig != last_sig:
-        print(f"📨 Отправка обновленного расписания для {target_title}...")
-        target_date_key = target_dt.strftime("%Y-%m-%d")
-        success = send_telegram_alert("\n".join(tg_lines), target_date_key)
-        if success:
-            if cancelled_count >= 2:
-                print(f"🎉 Отменено уроков: {cancelled_count}! Отправляем стикер!")
-                send_telegram_sticker(STICKER_ID, target_date_key)
-            with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
-                f.write(current_sig)
+        if should_notify:
+            print(f"📨 Отправка расписания для {target_title} (тихий режим: {silent})...")
+            target_date_key = target_dt.strftime("%Y-%m-%d")
+            success = send_telegram_alert("\n".join(tg_lines), target_date_key, silent=silent)
+            if success:
+                if cancelled_count >= 2:
+                    print(f"🎉 Отменено уроков: {cancelled_count}! Отправляем стикер!")
+                    send_telegram_sticker(STICKER_ID, target_date_key, silent=silent)
+                with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
+                    f.write(current_sig)
+        else:
+            print(f"⏳ На сайте ещё нет публикации на {target_title}. Ждём завуча (отмена преждевременного 'Изменений нет').")
     else:
         print(f"ℹ️ Для {target_title} расписание уже актуально.")
 
