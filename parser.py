@@ -435,7 +435,8 @@ def main():
             r_disp = room if room else "---"
             tg_lines.append(f"🔹 {num} | {r_disp} | {sub}")
 
-    tg_lines.append("\n🌐 <a href=\"https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya\">Сайт лицея</a> • 📱 <a href=\"https://raw.githubusercontent.com/TYTANpr/school-widget/main/today_10a.txt\">Виджет</a>")
+    tg_lines.append("\n🌐 <a href=\"https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya\">Сайт лицея</a> 
+    📱 <a href=\"https://raw.githubusercontent.com/TYTANpr/school-widget/main/today_10a.txt\">Виджет</a>")
 
     # 3. Умная отправка
     debug_mode = os.getenv("DEBUG_MODE") == "true"
