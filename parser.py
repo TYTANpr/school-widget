@@ -522,35 +522,25 @@ def main():
         tg_header = f"🟢 <b>РАСПИСАНИЕ (10А)</b>\n📅 <b>{target_title}</b>\n\n✅ <i>Изменений нет, уроки по обычному графику:</i>\n"
 
     tg_lines = [tg_header]
-    cancelled_lines = []  # Сюда соберем отмены для сворачивания
-    normal_lines = []  # Сюда обычные уроки и замены
 
     for num in all_nums:
-      if num in day_changes:
-        sub, room, cancelled = day_changes[num]
-        sub = clean_subj(sub)
-        r_disp = room if room else "---"
-        old_subj = clean_subj(base.get(num, ("", ""))[0])
+        if num in day_changes:
+            sub, room, cancelled = day_changes[num]
+            sub = clean_subj(sub)
+            r_disp = room if room else "---"
+            old_subj = clean_subj(base.get(num, ("", ""))[0])
 
-        if cancelled:
-          old_info = f" <s>{old_subj}</s>" if old_subj else ""
-          # Сворачиваемая строка для отмены
-          cancelled_lines.append(
-              f"❌ <b>{num} | --- | УРОК СНЯТ</b>{old_info}"
-          )
-        else:
-          old_info = f"\n   ↳ <i>Вместо: <s>{old_subj}</s></i>" if old_subj else ""
-          normal_lines.append(
-              f"<blockquote>⚡ <b>{num} | {r_disp} | {sub}</b>{old_info}</blockquote>"
-          )
-      elif num in base:
-        sub, room = base[num]
-        sub = clean_subj(sub)
-        r_disp = room if room else "---"
-        normal_lines.append(f"🔹 {num} | {r_disp} | {sub}")
-
-    # Добавляем обычные уроки
-    tg_lines.extend(normal_lines)
+            if cancelled:
+                old_info = f" <s>{old_subj}</s>" if old_subj else ""
+                tg_lines.append(f"<blockquote>❌ <b>{num} | --- | УРОК СНЯТ</b>{old_info}</blockquote>")
+            else:
+                old_info = f"\n   ↳ <i>Вместо: <s>{old_subj}</s></i>" if old_subj else ""
+                tg_lines.append(f"<blockquote>⚡ <b>{num} | {r_disp} | {sub}</b>{old_info}</blockquote>")
+        elif num in base:
+            sub, room = base[num]
+            sub = clean_subj(sub)
+            r_disp = room if room else "---"
+            tg_lines.append(f"🔹 {num} | {r_disp} | {sub}")
 
     # Если есть отменённые уроки — упаковываем их в сворачиваемую цитату Telegram
     if cancelled_lines:
