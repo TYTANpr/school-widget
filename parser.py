@@ -249,9 +249,6 @@ def main():
 
         soup = BeautifulSoup(res.text, "html.parser")
 
-        for iframe in soup.find_all('iframe'):
-            print(f"ℹ️ Найден iframe на странице: {iframe.get('src')}")
-
         for el in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'span', 'b', 'strong', 'em', 'font', 'caption', 'tr']):
             if el.name in ('div', 'p', 'span') and el.find('table'):
                 continue
@@ -261,7 +258,6 @@ def main():
                 continue
             txt_upper = txt.upper()
 
-            # Переключение секций (строго по заголовку ПЕДАГОГИ, без ложного срабатывания на "Учителя...")
             if ("ОБУЧАЮЩ" in txt_upper or "УЧАЩ" in txt_upper or "УЧЕНИК" in txt_upper) and len(txt) < 100:
                 is_students = True
                 print("👥 Переключение секции -> ОБУЧАЮЩИЕСЯ")
@@ -270,14 +266,18 @@ def main():
                 print("👩‍🏫 Переключение секции -> ПЕДАГОГИ")
                 continue
 
-            # Ловим дату блока
-            w, d = parse_header_date(txt)
-            if (w is not None or d is not None) and len(txt) < 250:
-                if "ОЛИМПИАД" not in txt_upper and "РЕГИСТРАЦ" not in txt_upper and "ИНСТРУКТАЖ" not in txt_upper:
-                    current_key = (w, d)
-                    if current_key not in changes_by_day:
-                        changes_by_day[current_key] = {}
-                    print(f"📅 Найдена дата: '{txt[:65]}' -> {current_key}")
+            # Ищем дату ТОЛЬКО в заголовках (не внутри строк таблиц и не в комментариях "за ЧТ")
+            is_inside_table = (el.name == 'tr') or (el.find_parent('table') is not None)
+            if not is_inside_table or "ИЗМЕНЕНИЯ РАСПИСАНИЯ" in txt_upper:
+                if not re.search(r'\bза\s+(?:пн|вт|ср|чт|пт|сб|понедельник|вторник|среду|четверг|пятницу|субботу)', txt.lower()):
+                    w, d = parse_header_date(txt)
+                    # Обязательно должен быть день недели (отсекает архивные даты в подвале 04.05.2026 и т.п.)
+                    if w is not None and len(txt) < 250:
+                        if "ОЛИМПИАД" not in txt_upper and "РЕГИСТРАЦ" not in txt_upper and "ИНСТРУКТАЖ" not in txt_upper and "ФЕДЕРАЛЬН" not in txt_upper:
+                            current_key = (w, d)
+                            if current_key not in changes_by_day:
+                                changes_by_day[current_key] = {}
+                            print(f"📅 Найдена дата: '{txt[:65]}' -> {current_key}")
 
             if el.name != 'tr':
                 continue
@@ -289,9 +289,7 @@ def main():
             if re.search(r'[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.', cells[0]):
                 continue
 
-            # Если в первой ячейке чётко стоит "10а" — это строка учеников, берём даже если заголовок секции пропущен!
             starts_with_10a = bool(re.match(r'^10\s*[-–—/]?\s*[аa](?:\b|[^а-яa-z])', cells[0].strip(), re.IGNORECASE))
-
             if not is_students and not starts_with_10a:
                 continue
 
@@ -321,11 +319,16 @@ def main():
                 if lesson_nums:
                     sub_idx = num_cell_idx + 1 if num_cell_idx + 1 < len(cells) else 1
                     sub = cells[sub_idx] if not is_canc else "УРОК СНЯТ"
-                    room = cells[sub_idx + 1] if sub_idx + 1 < len(cells) else ""
+                    room = cells[sub_idx + 1] if (not is_canc and sub_idx + 1 < len(cells)) else ""
+                    comment = cells[5].strip() if (not is_canc and len(cells) > 5) else ""
+                    
+                    # Добавляем комментарий (например "за ЧТ") к номеру кабинета/пометке
+                    room_info = f"{room}, {comment}" if (room and comment) else (room or comment)
+
                     if current_key not in changes_by_day:
                         changes_by_day[current_key] = {}
                     for l_num in lesson_nums:
-                        changes_by_day[current_key][l_num] = (sub, room, is_canc)
+                        changes_by_day[current_key][l_num] = (sub, room_info, is_canc)
                 elif is_canc:
                     for digit in re.findall(r'\d+', row_full):
                         if int(digit) <= 12:
