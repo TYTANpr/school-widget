@@ -521,6 +521,12 @@ def main():
     else:
         tg_header = f"🟢 <b>РАСПИСАНИЕ (10А)</b>\n📅 <b>{target_title}</b>\n\n✅ <i>Изменений нет, уроки по обычному графику:</i>\n"
 
+    # 2. Формирование сообщения для Telegram
+    if day_changes:
+        tg_header = f"🔔 <b>ИЗМЕНЕНИЯ В РАСПИСАНИИ (10А)</b>\n📅 <b>{target_title}</b>\n"
+    else:
+        tg_header = f"🟢 <b>РАСПИСАНИЕ (10А)</b>\n📅 <b>{target_title}</b>\n\n✅ <i>Изменений нет, уроки по обычному графику:</i>\n"
+
     tg_lines = [tg_header]
 
     for num in all_nums:
@@ -541,13 +547,6 @@ def main():
             sub = clean_subj(sub)
             r_disp = room if room else "---"
             tg_lines.append(f"🔹 {num} | {r_disp} | {sub}")
-
-    # Если есть отменённые уроки — упаковываем их в сворачиваемую цитату Telegram
-    if cancelled_lines:
-      canc_text = "\n".join(cancelled_lines)
-      # Двойной '>' превращает цитату в сворачиваемую плашку в Telegram
-      collapsed_block = f"\n<blockquote expandable><b>🚫 Отменённые уроки ({len(cancelled_lines)}):</b>\n{canc_text}</blockquote>"
-      tg_lines.append(collapsed_block)
 
     tg_lines.append("\n🌐 <a href=\"https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya\">Сайт лицея</a>")
 
