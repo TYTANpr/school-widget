@@ -12,7 +12,6 @@ STICKER_ID = "CAACAgIAAyEFAASOixz6AAIm82r8gHSgdnbqu4oIdj9rPvquxr4fAALTqgACsntRSg
 DAYS_RU = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
 MONTHS_RU = ["", "января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
 
-# Точное время окончания уроков по вашей таблице
 LESSON_END_TIMES = {
     1: "09:45",
     2: "10:40",
@@ -438,7 +437,6 @@ def main():
         else:
             all_active_nums.append(num)
 
-    # Ищем последний подряд идущий урок (игнорируем "хвосты" после окон/пропусков)
     real_last_lesson = 0
     if all_active_nums:
         all_active_nums.sort()
@@ -447,10 +445,10 @@ def main():
             if all_active_nums[i] == all_active_nums[i-1] + 1:
                 real_last_lesson = all_active_nums[i]
             else:
-                break # Нашли разрыв (окно), дальше не учитываем
+                break
 
     end_time_str = LESSON_END_TIMES.get(real_last_lesson, "")
-    time_info = f" ⏱ (Конец ~{end_time_str}, после {real_last_lesson} ур.)" if end_time_str else ""
+    time_info = f"\n⏱ <b>Окончание: ~{end_time_str}</b> (после {real_last_lesson} ур.)" if end_time_str else ""
 
     print(f"📊 Выбран целевой день: {target_title} | Последний урок: {real_last_lesson} ({end_time_str})")
     print(f"⚡ Итого замен для 10А: {len(day_changes)}")
@@ -474,7 +472,7 @@ def main():
     with open("today_10a.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(widget_lines))
 
-    # 2. Формирование сообщения для Telegram (с добавлением времени окончания)
+    # 2. Формирование сообщения для Telegram (время окончания перенесено под дату)
     if day_changes:
         tg_header = f"🔔 <b>ИЗМЕНЕНИЯ В РАСПИСАНИИ (10А)</b>\n📅 <b>{target_title}</b>{time_info}\n"
     else:
@@ -495,7 +493,7 @@ def main():
                 tg_lines.append(f"<blockquote>❌ <b>{num} | --- | УРОК СНЯТ</b>{old_info}</blockquote>")
             else:
                 if sub.lower() == old_subj.lower():
-                    tg_lines.append(f"<blockquote>⚡ <b>{num} | {r_disp} | {sub}</b> (изменён кабинет)</blockquote>")
+                    tg_lines.append(f"<blockquote>⚡ <b>{num} | {r_disp} | {sub}</b></blockquote>")
                 else:
                     old_info = f"\n   ↳ <i>Вместо: <s>{old_subj}</s></i>" if old_subj else ""
                     tg_lines.append(f"<blockquote>⚡ <b>{num} | {r_disp} | {sub}</b>{old_info}</blockquote>")
@@ -507,7 +505,7 @@ def main():
 
     tg_lines.append("\n🌐 <a href=\"https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya\">Сайт лицея</a>")
 
-    # 3. Умная отправка
+    # 3. Отправка
     debug_mode = os.getenv("DEBUG_MODE") == "true"
     cancelled_count = sum(1 for _, _, canc in day_changes.values() if canc)
 
