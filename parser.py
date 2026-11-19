@@ -427,7 +427,7 @@ def main():
 
     base = BASE_SCHEDULE_10A.get(target_wday, {}).copy()
 
-    # --- УМНЫЙ РАСЧЁТ ОКОНЧАНИЯ ДНЯ (С УЧЁТОМ ОТМЕН И ОКОН) ---
+    # --- РАСЧЁТ ОКОНЧАНИЯ ДНЯ ---
     all_active_nums = []
     for num in sorted(set(list(base.keys()) + list(day_changes.keys()))):
         if num in day_changes:
@@ -448,7 +448,7 @@ def main():
                 break
 
     end_time_str = LESSON_END_TIMES.get(real_last_lesson, "")
-    time_info = f"\n⏱ <b>Окончание: ~{end_time_str}</b> (после {real_last_lesson} ур.)" if end_time_str else ""
+    time_info = f"\n⏱ <b>{end_time_str}</b>" if end_time_str else ""
 
     print(f"📊 Выбран целевой день: {target_title} | Последний урок: {real_last_lesson} ({end_time_str})")
     print(f"⚡ Итого замен для 10А: {len(day_changes)}")
@@ -472,9 +472,9 @@ def main():
     with open("today_10a.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(widget_lines))
 
-    # 2. Формирование сообщения для Telegram (время окончания перенесено под дату)
+    # 2. Формирование сообщения для Telegram (заголовок + время на новой строчке)
     if day_changes:
-        tg_header = f"🔔 <b>ИЗМЕНЕНИЯ В РАСПИСАНИИ (10А)</b>\n📅 <b>{target_title}</b>{time_info}\n"
+        tg_header = f"🔔 <b>ИЗМЕНЕНИЯ (10А)</b>\n📅 <b>{target_title}</b>{time_info}\n"
     else:
         tg_header = f"🟢 <b>РАСПИСАНИЕ (10А)</b>\n📅 <b>{target_title}</b>{time_info}\n\n✅ <i>Изменений нет, уроки по обычному графику:</i>\n"
 
