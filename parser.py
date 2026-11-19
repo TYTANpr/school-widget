@@ -7,11 +7,23 @@ from datetime import datetime, timedelta
 URL = "https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
-# Стикер при 2 и более отменах уроков
 STICKER_ID = "CAACAgIAAyEFAASOixz6AAIm82r8gHSgdnbqu4oIdj9rPvquxr4fAALTqgACsntRSgFMmIStpRd-PQQ"
 
 DAYS_RU = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
 MONTHS_RU = ["", "января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+
+# Точное время окончания уроков по вашей таблице
+LESSON_END_TIMES = {
+    1: "09:45",
+    2: "10:40",
+    3: "11:45",
+    4: "12:50",
+    5: "13:45",
+    6: "14:40",
+    7: "15:45",
+    8: "16:40",
+    9: "17:35"
+}
 
 SHORT_NAMES = {
     "обществознание": "Общ-ние", "английский язык": "Ин. яз", "англ. язык": "Ин. яз",
@@ -416,7 +428,31 @@ def main():
 
     base = BASE_SCHEDULE_10A.get(target_wday, {}).copy()
 
-    print(f"📊 Выбран целевой день: {target_title}")
+    # --- УМНЫЙ РАСЧЁТ ОКОНЧАНИЯ ДНЯ (С УЧЁТОМ ОТМЕН И ОКОН) ---
+    all_active_nums = []
+    for num in sorted(set(list(base.keys()) + list(day_changes.keys()))):
+        if num in day_changes:
+            _, _, cancelled = day_changes[num]
+            if not cancelled:
+                all_active_nums.append(num)
+        else:
+            all_active_nums.append(num)
+
+    # Ищем последний подряд идущий урок (игнорируем "хвосты" после окон/пропусков)
+    real_last_lesson = 0
+    if all_active_nums:
+        all_active_nums.sort()
+        real_last_lesson = all_active_nums[0]
+        for i in range(1, len(all_active_nums)):
+            if all_active_nums[i] == all_active_nums[i-1] + 1:
+                real_last_lesson = all_active_nums[i]
+            else:
+                break # Нашли разрыв (окно), дальше не учитываем
+
+    end_time_str = LESSON_END_TIMES.get(real_last_lesson, "")
+    time_info = f" ⏱ (Конец ~{end_time_str}, после {real_last_lesson} ур.)" if end_time_str else ""
+
+    print(f"📊 Выбран целевой день: {target_title} | Последний урок: {real_last_lesson} ({end_time_str})")
     print(f"⚡ Итого замен для 10А: {len(day_changes)}")
 
     # 1. Запись для виджета
@@ -438,11 +474,11 @@ def main():
     with open("today_10a.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(widget_lines))
 
-    # 2. Формирование сообщения для Telegram (если предмет тот же самый — без дублирования "Вместо")
+    # 2. Формирование сообщения для Telegram (с добавлением времени окончания)
     if day_changes:
-        tg_header = f"🔔 <b>ИЗМЕНЕНИЯ В РАСПИСАНИИ (10А)</b>\n📅 <b>{target_title}</b>\n"
+        tg_header = f"🔔 <b>ИЗМЕНЕНИЯ В РАСПИСАНИИ (10А)</b>\n📅 <b>{target_title}</b>{time_info}\n"
     else:
-        tg_header = f"🟢 <b>РАСПИСАНИЕ (10А)</b>\n📅 <b>{target_title}</b>\n\n✅ <i>Изменений нет, уроки по обычному графику:</i>\n"
+        tg_header = f"🟢 <b>РАСПИСАНИЕ (10А)</b>\n📅 <b>{target_title}</b>{time_info}\n\n✅ <i>Изменений нет, уроки по обычному графику:</i>\n"
 
     tg_lines = [tg_header]
 
@@ -458,7 +494,6 @@ def main():
                 old_info = f" <s>{old_subj}</s>" if old_subj else ""
                 tg_lines.append(f"<blockquote>❌ <b>{num} | --- | УРОК СНЯТ</b>{old_info}</blockquote>")
             else:
-                # УМНАЯ ПРОВЕРКА: если предмет тот же (или это просто смена кабинета/комментарий)
                 if sub.lower() == old_subj.lower():
                     tg_lines.append(f"<blockquote>⚡ <b>{num} | {r_disp} | {sub}</b> (изменён кабинет)</blockquote>")
                 else:
@@ -472,7 +507,7 @@ def main():
 
     tg_lines.append("\n🌐 <a href=\"https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya\">Сайт лицея</a>")
 
-    # 3. Отправка
+    # 3. Умная отправка
     debug_mode = os.getenv("DEBUG_MODE") == "true"
     cancelled_count = sum(1 for _, _, canc in day_changes.values() if canc)
 
