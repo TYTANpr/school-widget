@@ -12,7 +12,8 @@ STICKER_ID = "CAACAgIAAyEFAASOixz6AAIm82r8gHSgdnbqu4oIdj9rPvquxr4fAALTqgACsntRSg
 DAYS_RU = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
 MONTHS_RU = ["", "января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
 
-LESSON_END_TIMES = {
+# Буднее расписание звонков (Пн-Пт)
+LESSON_END_TIMES_WEEKDAY = {
     1: "09:45",
     2: "10:40",
     3: "11:45",
@@ -21,7 +22,20 @@ LESSON_END_TIMES = {
     6: "14:40",
     7: "15:45",
     8: "16:40",
-    9: "17:35"
+    9: "17:35",
+}
+
+# Субботнее расписание звонков (Сб)
+LESSON_END_TIMES_SATURDAY = {
+    1: "09:40",
+    2: "10:30",
+    3: "11:30",
+    4: "12:30",
+    5: "13:20",
+    6: "14:10",
+    7: "15:10",
+    8: "16:00",
+    9: "16:50",
 }
 
 SHORT_NAMES = {
@@ -427,27 +441,33 @@ def main():
 
     base = BASE_SCHEDULE_10A.get(target_wday, {}).copy()
 
-    # --- РАСЧЁТ ОКОНЧАНИЯ ДНЯ ---
+# --- РАСЧЁТ ОКОНЧАНИЯ ДНЯ (С УЧЁТОМ СУББОТЫ И ОКОН) ---
     all_active_nums = []
     for num in sorted(set(list(base.keys()) + list(day_changes.keys()))):
-        if num in day_changes:
-            _, _, cancelled = day_changes[num]
-            if not cancelled:
-                all_active_nums.append(num)
-        else:
-            all_active_nums.append(num)
+      if num in day_changes:
+        _, _, cancelled = day_changes[num]
+        if not cancelled:
+          all_active_nums.append(num)
+      else:
+        all_active_nums.append(num)
 
     real_last_lesson = 0
     if all_active_nums:
-        all_active_nums.sort()
-        real_last_lesson = all_active_nums[0]
-        for i in range(1, len(all_active_nums)):
-            if all_active_nums[i] == all_active_nums[i-1] + 1:
-                real_last_lesson = all_active_nums[i]
-            else:
-                break
+      all_active_nums.sort()
+      real_last_lesson = all_active_nums[0]
+      for i in range(1, len(all_active_nums)):
+        if all_active_nums[i] == all_active_nums[i - 1] + 1:
+          real_last_lesson = all_active_nums[i]
+        else:
+          break
 
-    end_time_str = LESSON_END_TIMES.get(real_last_lesson, "")
+    # Выбираем словарь звонков: для субботы (wday == 5) свой, для остальных дней обычный
+    active_end_times = (
+        LESSON_END_TIMES_SATURDAY
+        if target_wday == 5
+        else LESSON_END_TIMES_WEEKDAY
+    )
+    end_time_str = active_end_times.get(real_last_lesson, "")
     time_info = f"\n⏱ <b>{end_time_str}</b>" if end_time_str else ""
 
     print(f"📊 Выбран целевой день: {target_title} | Последний урок: {real_last_lesson} ({end_time_str})")
