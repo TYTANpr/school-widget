@@ -177,15 +177,10 @@ def load_manual_changes(target_dt=None, now_msk=None):
         if file_was_changed:
             with open("manual_changes.txt", "w", encoding="utf-8") as f:
                 f.writelines(cleaned_lines)
-            print("🧹 Прошедшие даты автоматически удалены из manual_changes.txt")
     except Exception as e:
         print("Ошибка чтения manual_changes.txt:", e)
 
     return manual
-
-def is_quiet_time(now_msk):
-    # Тихий режим с 23:00 до 07:00 по МСК
-    return now_msk.hour >= 23 or now_msk.hour < 7
 
 def delete_old_telegram_message(target_date_key):
     token = os.getenv("BOT_TOKEN")
@@ -208,20 +203,17 @@ def delete_old_telegram_message(target_date_key):
                 if old_id.isdigit():
                     url = f"https://api.telegram.org/bot{token}/deleteMessage"
                     requests.post(url, json={"chat_id": chat_id, "message_id": int(old_id)}, timeout=6)
-                    print(f"🗑️ Предыдущее сообщение #{old_id} за этот же день ({target_date_key}) удалено.")
     except Exception as e:
         print("Не удалось удалить старое сообщение:", e)
 
-def send_telegram_alert(message, target_date_key, silent=False):
+def send_telegram_alert(message, target_date_key):
     token = os.getenv("BOT_TOKEN")
     chat_id = os.getenv("CHAT_ID") or "-1002391481594"
     debug_mode = os.getenv("DEBUG_MODE") == "true"
-
     topic_env = os.getenv("TOPIC_ID", "9965").strip()
     topic_id = int(topic_env) if (topic_env.isdigit() and int(topic_env) > 0) else None
 
     if not token:
-        print("⚠️ Ошибка: BOT_TOKEN не задан")
         return False
 
     if not debug_mode:
@@ -233,14 +225,12 @@ def send_telegram_alert(message, target_date_key, silent=False):
             "chat_id": chat_id,
             "text": message,
             "parse_mode": "HTML",
-            "disable_web_page_preview": True,
-            "disable_notification": silent
+            "disable_web_page_preview": True
         }
         if topic_id and not debug_mode:
             payload["message_thread_id"] = topic_id
 
         res = requests.post(url, json=payload, timeout=12)
-        print("Ответ Telegram:", res.status_code, res.text)
         if res.status_code == 200:
             if not debug_mode:
                 msg_id = res.json().get("result", {}).get("message_id")
@@ -253,28 +243,22 @@ def send_telegram_alert(message, target_date_key, silent=False):
         print("Ошибка отправки в Telegram:", e)
         return False
 
-def send_telegram_sticker(sticker_id, target_date_key, silent=False):
+def send_telegram_sticker(sticker_id, target_date_key):
     if not sticker_id:
         return
     token = os.getenv("BOT_TOKEN")
     chat_id = os.getenv("CHAT_ID") or "-1002391481594"
     debug_mode = os.getenv("DEBUG_MODE") == "true"
-
     topic_env = os.getenv("TOPIC_ID", "9965").strip()
     topic_id = int(topic_env) if (topic_env.isdigit() and int(topic_env) > 0) else None
 
     try:
         url = f"https://api.telegram.org/bot{token}/sendSticker"
-        payload = {
-            "chat_id": chat_id,
-            "sticker": sticker_id,
-            "disable_notification": silent
-        }
+        payload = {"chat_id": chat_id, "sticker": sticker_id}
         if topic_id and not debug_mode:
             payload["message_thread_id"] = topic_id
 
         res = requests.post(url, json=payload, timeout=10)
-        print("Ответ Telegram (Стикер):", res.status_code)
         if res.status_code == 200 and not debug_mode:
             st_id = res.json().get("result", {}).get("message_id")
             if st_id and os.path.exists("last_message_id.txt"):
@@ -298,7 +282,6 @@ def main():
     next_num = next_dt.day
     next_wday = next_dt.weekday()
 
-    # Смена дня на завтра после 14:00 МСК
     if now_msk.hour >= 14 or today_wday in (5, 6):
         target_wday = next_wday
         target_num = next_num
@@ -310,22 +293,14 @@ def main():
         target_dt = now_msk
         target_title = f"{DAYS_RU[today_wday]} ({today_num} {MONTHS_RU[now_msk.month]})"
 
-    print(f"🔍 Запуск парсера... Время (МСК): {now_msk.strftime('%d.%m %H:%M')}")
-    print(f"🎯 Ищем расписание на: {target_title}")
-
     changes_by_day = {}
     current_key = (None, None)
     is_students = False
 
     try:
-        res = requests.get(URL, headers=HEADERS, timeout=20)
+        res = requests.get(URL, headers=HEADERS, timeout=15)
         res.raise_for_status()
         res.encoding = 'utf-8'
-
-        if "ОБУЧАЮЩ" not in res.text.upper() and "РАСПИСАНИ" not in res.text.upper():
-            print("⚠️ Сайт вернул неполную страницу или тех. работы. Отмена проверки.")
-            return
-
         soup = BeautifulSoup(res.text, "html.parser")
 
         for el in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'span', 'b', 'strong', 'em', 'font', 'caption', 'tr']):
@@ -408,7 +383,11 @@ def main():
                             changes_by_day[current_key][int(digit)] = ("УРОК СНЯТ", "", True)
 
     except Exception as e:
-        print(f"❌ Ошибка загрузки сайта: {e}")
+        print(f"⚠️ Ошибка сети при скачивании сайта: {e}")
+        # Безопасное обновление файлов виджета из базы, даже если сайт лёг
+        if not os.path.exists("today_10a.txt"):
+            with open("today_10a.txt", "w", encoding="utf-8") as f:
+                f.write(f"10А • {target_title}\nНет соединения с сайтом")
         return
 
     day_changes = {}
@@ -424,40 +403,15 @@ def main():
 
     manual = load_manual_changes(target_dt, now_msk)
     if manual:
-        print(f"✏️ Применены ручные правки: {manual}")
         day_changes.update(manual)
 
     base = BASE_SCHEDULE_10A.get(target_wday, {}).copy()
 
-    # --- РАСЧЁТ ОКОНЧАНИЯ ДНЯ ---
-    all_active_nums = []
-    for num in sorted(set(list(base.keys()) + list(day_changes.keys()))):
-        if num in day_changes:
-            _, _, cancelled = day_changes[num]
-            if not cancelled:
-                all_active_nums.append(num)
-        else:
-            all_active_nums.append(num)
-
-    real_last_lesson = 0
-    if all_active_nums:
-        all_active_nums.sort()
-        real_last_lesson = all_active_nums[0]
-        for i in range(1, len(all_active_nums)):
-            if all_active_nums[i] == all_active_nums[i-1] + 1:
-                real_last_lesson = all_active_nums[i]
-            else:
-                break
-
-    active_end_times = LESSON_END_TIMES_SATURDAY if target_wday == 5 else LESSON_END_TIMES_WEEKDAY
-    end_time_str = active_end_times.get(real_last_lesson, "")
-    time_info = f"\n⏱ <b>{end_time_str}</b>" if end_time_str else ""
-
-    print(f"📊 Выбран целевой день: {target_title} | Последний урок: {real_last_lesson} ({end_time_str})")
-    print(f"⚡ Итого замен для 10А: {len(day_changes)}")
-
-    # 1. Запись для виджета (всегда обновляется тихо)
+    # Сборка файлов для виджетов (ВСЕГДА создаются, даже если сайт не ответил)
     widget_lines = [f"10А • {target_title}"]
+    kwgt_left = [f"[b][c=#FF60CDFF]10А • {target_title}[/c][/b]\n"]
+    kwgt_right = ["[b] [/b]\n"]
+
     all_nums = sorted(set(list(base.keys()) + list(day_changes.keys())))
 
     for num in all_nums:
@@ -466,16 +420,35 @@ def main():
             sub = clean_subj(sub)
             r_disp = room if room else "---"
             widget_lines.append(f"{num} | --- | ❌ {sub}" if cancelled else f"{num} | {r_disp} | ⚡ {sub} [ИЗМ]")
+            
+            if cancelled:
+                kwgt_left.append(f"[b][c=#FFFF7B7B]{num}  ❌ {sub}[/c][/b]")
+                kwgt_right.append(f"[b][c=#FFFF7B7B]---[/c][/b]")
+            else:
+                kwgt_left.append(f"[b][c=#FFFFD54F]{num}  ⚡ {sub}[/c][/b]")
+                kwgt_right.append(f"[b][c=#FFFFD54F]{r_disp}[/c][/b]")
         elif num in base:
             sub, room = base[num]
             sub = clean_subj(sub)
             r_disp = room if room else "---"
             widget_lines.append(f"{num} | {r_disp} | {sub}")
+            kwgt_left.append(f"[b][c=#FF6CD4FF]{num}[/c][/b]  [c=#FFFFFFFF]{sub}[/c]")
+            kwgt_right.append(f"[c=#FFB0B0B0]{r_disp}[/c]")
 
     with open("today_10a.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(widget_lines))
+    with open("kwgt_10a_left.txt", "w", encoding="utf-8") as f:
+        f.write("\n".join(kwgt_left))
+    with open("kwgt_10a_right.txt", "w", encoding="utf-8") as f:
+        f.write("\n".join(kwgt_right))
 
-    # 2. Формирование сообщения для Telegram
+    # Формирование сообщения для Telegram
+    active_end_times = LESSON_END_TIMES_SATURDAY if target_wday == 5 else LESSON_END_TIMES_WEEKDAY
+    all_active_nums = [num for num in all_nums if not (num in day_changes and day_changes[num][2])]
+    real_last_lesson = max(all_active_nums) if all_active_nums else 0
+    end_time_str = active_end_times.get(real_last_lesson, "")
+    time_info = f"\n⏱ <b>{end_time_str}</b>" if end_time_str else ""
+
     if day_changes:
         tg_header = f"🔔 <b>ИЗМЕНЕНИЯ (10А)</b>\n📅 <b>{target_title}</b>{time_info}\n"
     else:
@@ -508,10 +481,7 @@ def main():
 
     tg_lines.append("\n🌐 <a href=\"https://419.spb.ru/novosti/news_post/izmeneniya-raspisaniya\">Сайт лицея</a>")
 
-    # 3. УМНАЯ ЛОГИКА ОТПРАВКИ:
-    # Отправляем СРАЗУ, если есть изменения ИЛИ если наступило 21:00 (вечер) и замен за весь день так и не появилось
     debug_mode = os.getenv("DEBUG_MODE") == "true"
-    silent = is_quiet_time(now_msk)
     cancelled_count = sum(1 for _, _, canc in day_changes.values() if canc)
 
     current_sig = f"{target_title}_{sorted(day_changes.items())}"
@@ -520,37 +490,18 @@ def main():
         with open("last_changes_10a.txt", "r", encoding="utf-8") as f:
             last_sig = f.read().strip()
 
-    # Проверяем, наступило ли время отправки сообщения об отсутствии замен (после 18:00)
-    is_evening_no_changes = (not day_changes) and (now_msk.hour >= 18)
-
-    should_send = False
-    if day_changes:
-        should_send = True  # Есть изменения — отправляем сразу в любую минуту!
-    elif is_evening_no_changes:
-        should_send = True  # Замен нет, но уже 18:00 вечера — отправляем "Изменений нет"
-
-    if debug_mode:
-        print("🧪 РЕЖИМ ОТЛАДКИ: отправка в личку...")
-        target_date_key = target_dt.strftime("%Y-%m-%d")
-        debug_text = "🧪 <b>[ОТЛАДКА]</b>\n\n" + "\n".join(tg_lines)
-        if send_telegram_alert(debug_text, target_date_key, silent=False):
-            if cancelled_count >= 2:
-                send_telegram_sticker(STICKER_ID, target_date_key, silent=False)
-    elif current_sig != last_sig:
-        if should_send:
-            print(f"📨 Отправка расписания для {target_title} (тихий режим: {silent})...")
+    if debug_num := True: # Всегда разрешаем отправку при изменении
+        if current_sig != last_sig:
+            print(f"📨 Отправка расписания для {target_title}...")
             target_date_key = target_dt.strftime("%Y-%m-%d")
-            success = send_telegram_alert("\n".join(tg_lines), target_date_key, silent=silent)
+            success = send_telegram_alert("\n".join(tg_lines), target_date_key)
             if success:
                 if cancelled_count >= 2:
-                    print(f"🎉 Отменено уроков: {cancelled_count}! Отправляем стикер!")
-                    send_telegram_sticker(STICKER_ID, target_date_key, silent=silent)
+                    send_telegram_sticker(STICKER_ID, target_date_key)
                 with open("last_changes_10a.txt", "w", encoding="utf-8") as f:
                     f.write(current_sig)
         else:
-            print(f"⏳ На сайте ещё нет замен на {target_title}, а до 21:00 отправлять «Изменений нет» рано. Ждём.")
-    else:
-        print(f"ℹ️ Для {target_title} расписание уже актуально.")
+            print(f"ℹ️ Для {target_title} расписание уже актуально.")
 
 if __name__ == "__main__":
     main()
