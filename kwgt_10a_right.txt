@@ -7,4 +7,4 @@
 [c=#FFB0B0B0]307[/c]
 [c=#FFB0B0B0]102[/c]
 [c=#FFB0B0B0]102[/c]
-[c=#FFB0B0B0]---[/c]
+[b][c=#FFFF7B7B]---[/c][/b]
